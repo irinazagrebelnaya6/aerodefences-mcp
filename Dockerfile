@@ -12,6 +12,8 @@ RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
 # Код і локальні знання для RAG.
 COPY server_aerodefences.py rag_index.py ./
+COPY ad_config.py ad_metrics.py ad_db.py ad_security.py ./
+COPY ad_resources.py ad_prompts.py ad_tools_read.py ad_tools_write.py ad_tools_rag.py ./
 COPY knowledge/ ./knowledge/
 
 # Non-root користувач (не працюємо від root у контейнері).

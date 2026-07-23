@@ -26,7 +26,12 @@ dev = [
 # Проєкт — плоскі модулі в корені (не пакет), тож перелічуємо їх явно,
 # щоб `pip install -e .` не падав на автопошуку пакетів.
 [tool.setuptools]
-py-modules = ["server_aerodefences", "rag_index"]
+py-modules = [
+    "server_aerodefences", "rag_index",
+    "ad_config", "ad_metrics", "ad_db", "ad_security",
+    "ad_resources", "ad_prompts",
+    "ad_tools_read", "ad_tools_write", "ad_tools_rag",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
