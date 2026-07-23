@@ -86,7 +86,14 @@
 
 | Файл | Роль | З чим з'єднаний |
 |------|------|-----------------|
-| **`server_aerodefences.py`** | Сам MCP-сервер: усі інструменти + ресурс над MySQL | ← клієнти (stdio); → MySQL (pymysql) |
+| **`server_aerodefences.py`** | Точка входу-агрегатор: імпортує модулі `ad_*` (реєстрація на `mcp`) і запускає транспорт | ← клієнти (stdio/http) |
+| **`ad_config.py`** | env, константи, RBAC-рівні, логування, JWT-authn, екземпляр `mcp` | база для решти `ad_*` |
+| **`ad_db.py`** | Пул зʼєднань, `query`/`_run_write`, таймаути, retry, нотифікації | → MySQL (pymysql) |
+| **`ad_security.py`** | Роль (RBAC), бар'єр доступу, `_confirm` (підтвердження) | ← write-інструменти |
+| **`ad_metrics.py`** | Лічильники (in-memory + Prometheus) | ← `_run_write`, `_require_role` |
+| **`ad_resources.py`** / **`ad_prompts.py`** | Ресурс `resource://schema` / prompt `compliance_report` | реєструються на `mcp` |
+| **`ad_tools_read.py`** / **`ad_tools_write.py`** / **`ad_tools_rag.py`** | READ+моніторинг / WRITE+«кошик» / RAG-інструменти | реєструються на `mcp` |
+| **`rag_index.py`** | RAG-retriever (TF-IDF над БД + `knowledge/`) | ← `ask_catalog` |
 | **`client_aerodefences.py`** | Harness — сценарний тест-клієнт замість LLM; ганяє всі інструменти по черзі й друкує результат | піднімає сервер підпроцесом |
 | **`repl_aerodefences.py`** | Інтерактивний REPL — команди `call <tool> {json}` набираються вручну | піднімає сервер підпроцесом |
 | **`.env` / `.env.example`** | Параметри підключення до БД (`ADD_DB_*`) | читає `server_aerodefences.py` через `dotenv` |
@@ -95,19 +102,28 @@
 | **`context_scenario_aerodefences.md`** | Документ навчального завдання (галузь + сценарій контексту) | — |
 | **`ARCHITECTURE.md`** | Цей файл — повний опис архітектури | — |
 
-### 3.1. `server_aerodefences.py` — деталі
+### 3.1. Модульна структура сервера
 
-Структурні блоки (згори вниз):
+Історично весь сервер жив в одному файлі; тепер логіку розкладено на модулі за
+відповідальністю (`server_aerodefences.py` лишився точкою входу-агрегатором, що
+імпортує їх і реєструє інструменти/ресурси/prompt-и на спільному `mcp`):
 
-- **`load_dotenv()` + `DB_CONFIG`** — параметри підключення з `.env`
-  (локально — БД `aerodefences` на `127.0.0.1:3307`).
-- **`_run_query` / `query`** — read-доступ. `query` загортає блокуючий pymysql
-  у `asyncio.to_thread`, щоб не блокувати event loop.
-- **`_run_write`** — write-доступ: `execute` + `commit`, повертає кількість
-  змінених рядків.
-- **`ALLOWED_STATUSES = ("draft","published","archived")`** — єдине джерело
-  істини для валідації статусів (використовується в `find_products` і
-  `set_product_status`).
+- **`ad_config.py`** — `load_dotenv()`, константи (`ROLES`, `ALLOWED_STATUSES`,
+  `MAX_LIMIT`, `ALLOWED_UPDATE_FIELDS`), логування, `_build_auth()` (JWT) і
+  екземпляр `mcp = FastMCP(...)`.
+- **`ad_db.py`** — `DB_CONFIG`, пул (`_get_pool`), `_run_query`/`query` (read у
+  `asyncio.to_thread`), `_run_write` (`execute`+`commit`+нотифікація), таймаути
+  та `_retry_read` (retry лише на read).
+- **`ad_security.py`** — `_current_role` (роль із JWT у http / env у stdio),
+  `_require_role` (бар'єр RBAC) і `_confirm` (спільне підтвердження перед write).
+- **`ad_metrics.py`** — `METRICS` + Prometheus-лічильники.
+- **`ad_resources.py`** / **`ad_prompts.py`** — `resource://schema` /
+  `compliance_report`.
+- **`ad_tools_read.py`** / **`ad_tools_write.py`** / **`ad_tools_rag.py`** —
+  самі інструменти, згруповані за типом.
+
+> `ALLOWED_STATUSES = ("draft","published","archived")` (в `ad_config.py`) —
+> єдине джерело істини для валідації статусів (`find_products`, `set_product_status`).
 
 Публічні сутності (те, що бачить LLM):
 

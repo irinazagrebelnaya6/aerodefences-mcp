@@ -136,7 +136,10 @@ claude mcp add aerodefences -s project -- \
 ## 🗂 Структура репозиторію
 
 ```
-server_aerodefences.py   # MCP-сервер (інструменти, RBAC, RAG, моніторинг)
+server_aerodefences.py   # точка входу-агрегатор (реєструє модулі, запускає транспорт)
+ad_config.py ad_db.py ad_security.py ad_metrics.py      # інфраструктура (config / БД / RBAC / метрики)
+ad_resources.py ad_prompts.py                           # ресурс schema / prompt compliance_report
+ad_tools_read.py ad_tools_write.py ad_tools_rag.py      # інструменти (read+моніторинг / write+кошик / RAG)
 rag_index.py             # RAG-retriever (TF-IDF над БД + knowledge/)
 knowledge/*.md           # локальне джерело знань для RAG (політики, глосарій)
 client_aerodefences.py   # harness-клієнт (тест без LLM)
