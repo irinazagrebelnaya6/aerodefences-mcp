@@ -1,0 +1,69 @@
+# Відтворюване середовище: MySQL (із seed db/init.sql) + MCP-сервер.
+# Запуск:  docker compose up --build
+#   MySQL    -> 127.0.0.1:3307  (щоб не конфліктувати з локальним 3306)
+#   MCP HTTP -> 127.0.0.1:8000
+#   Metrics  -> 127.0.0.1:9100/metrics
+#
+# Секрети НЕ зашиті у файл — беруться з .env (не в git). Обовʼязкові змінні
+# позначені `:?` і зупинять запуск, якщо їх не задано. Див. .env.example.
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: ${ADD_DB_NAME:-aerodefences}
+      MYSQL_USER: ${ADD_DB_USER:?set ADD_DB_USER in .env}
+      MYSQL_PASSWORD: ${ADD_DB_PASSWORD:?set ADD_DB_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:3307:3306"
+    volumes:
+      # seed виконується автоматично при першій ініціалізації тому.
+      # ⚠️ Прод: init.sql — лише dev-seed; схему котити міграціями (PRODUCTION.md 4.4).
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  mcp:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ADD_DB_HOST: db
+      ADD_DB_PORT: "3306"
+      ADD_DB_USER: ${ADD_DB_USER:?set ADD_DB_USER in .env}
+      ADD_DB_PASSWORD: ${ADD_DB_PASSWORD:?set ADD_DB_PASSWORD in .env}
+      ADD_DB_NAME: ${ADD_DB_NAME:-aerodefences}
+      ADD_DB_POOL_SIZE: "5"
+      ADD_TRANSPORT: http
+      ADD_HTTP_HOST: 0.0.0.0
+      ADD_HTTP_PORT: "8000"
+      ADD_METRICS_PORT: "9100"
+      ADD_ROLE: viewer          # deny-by-default; підвищення лише через JWT-claims
+      ADD_LOG_LEVEL: INFO
+      ADD_LOG_FORMAT: json
+      # JWT-authn обовʼязковий для HTTP — без ключів сервіс не стартує (fail-safe).
+      ADD_JWT_JWKS_URI: ${ADD_JWT_JWKS_URI:?set ADD_JWT_JWKS_URI in .env}
+      ADD_JWT_ISSUER: ${ADD_JWT_ISSUER:-}
+      ADD_JWT_AUDIENCE: ${ADD_JWT_AUDIENCE:-}
+      # Спільний сесійний стан між репліками (необовʼязково локально).
+      ADD_REDIS_URL: ${ADD_REDIS_URL:-}
+    ports:
+      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:9100:9100"
+    healthcheck:
+      # Liveness через prometheus-ендпоінт (curl в slim-образі немає → python).
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9100/metrics')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
