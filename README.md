@@ -145,7 +145,6 @@ tests/                   # pytest: read/RAG/RBAC/monitoring/round-trip
 db/init.sql              # знеособлений seed БД (для compose + CI)
 Dockerfile, docker-compose.yml, .github/workflows/ci.yml
 PROMPT_BOOK.md, ARCHITECTURE.md, DEMO.md, architecture.drawio
-учебные-материалы/       # мінімальні приклади «граней» MCP (по парі server/client)
 ```
 
 ---
@@ -154,7 +153,7 @@ PROMPT_BOOK.md, ARCHITECTURE.md, DEMO.md, architecture.drawio
 
 | Змінна | Призначення | Дефолт |
 |---|---|---|
-| `ADD_DB_HOST/PORT/USER/PASSWORD/NAME` | підключення до MySQL | localhost:3306 |
+| `ADD_DB_HOST/PORT/USER/PASSWORD/NAME` | підключення до MySQL | 127.0.0.1:3307 |
 | `ADD_ROLE` | роль доступу для stdio (`viewer/editor/admin`) | `viewer` |
 | `ADD_TRANSPORT` | `stdio` або `http` | `stdio` |
 | `ADD_HTTP_HOST/PORT` | адреса для HTTP-транспорту | `0.0.0.0:8000` |
