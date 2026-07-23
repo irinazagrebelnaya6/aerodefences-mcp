@@ -21,7 +21,7 @@ MCP-сервіс (FastMCP) над каталогом компонентів дл
 |---|---|
 | **Код MCP-сервера** | [`server_aerodefences.py`](server_aerodefences.py), [`rag_index.py`](rag_index.py) |
 | **Технічна документація** | цей `README.md` + [`ARCHITECTURE.md`](ARCHITECTURE.md) |
-| **Архітектурна схема** | [`docs/architecture.png`](docs/architecture.png) · редагована [`architecture.drawio`](architecture.drawio) · Mermaid у [ARCHITECTURE.md §7](ARCHITECTURE.md) |
+| **Архітектурна схема** | [`docs/architecture.png`](docs/architecture.png) · редагована [`architecture.drawio`](architecture.drawio) · Mermaid у [ARCHITECTURE.md §6](ARCHITECTURE.md) |
 | **Prompt Book** | [`PROMPT_BOOK.md`](PROMPT_BOOK.md) — системні промпти + guardrails |
 | **Демонстрація** | [`DEMO.md`](DEMO.md) — сценарій + `🎥 <ВСТАВ_ПОСИЛАННЯ_НА_ВІДЕО>` |
 | **Тести / CI** | [`tests/`](tests/), [`.github/workflows/ci.yml`](.github/workflows/ci.yml) |

@@ -4,8 +4,6 @@
 
 > Проєкт — навчальна вправа з «архітектури контексту»: MCP-сервер (FastMCP)
 > над реальною MySQL-базою `aerodefences` (каталог компонентів БПЛА).
-> Крім робочого сервера тут лежить набір мінімальних прикладів («грані»
-> контексту MCP) — по одній парі `server_*.py` / `client_*.py` на кожну грань.
 
 ---
 
@@ -186,36 +184,7 @@
 
 ---
 
-## 4. Приклади-«грані» (навчальні пари server/client)
-
-Це мінімальні самостійні демонстрації окремих можливостей MCP. Кожна пара
-`server_X.py` + `client_X.py` запускається незалежно
-(`.venv/bin/python client_X.py`) і ілюструє одну грань. Робочий
-`server_aerodefences.py` зібраний саме з цих цеглинок.
-
-| Пара | Грань | Що демонструє |
-|------|-------|---------------|
-| `server_context` / `client_context` | **context** | Базовий інструмент `greet` з `ctx.info` — мінімум, з чого все починається |
-| `server_logging` / `client_logging` | **logging** | `ctx.debug/info` з `extra`; клієнт ловить логи через `log_handler` |
-| `server_progress` / `client_progress` | **progress** | `ctx.report_progress` у циклі; клієнт малює відсотки |
-| `server_elicitation` / `client_elicitation` | **elicitation** | Багатокрокове запитування (текст → число → enum yes/no) з дефолтами |
-| `server_state` / `client_state` | **state** | `ctx.set_state/get_state/delete_state` — стан між викликами в межах сесії |
-| `server_request` / `client_request` | **request** | `ctx.request_id/client_id/session_id` + клієнтська `meta` (user_id, trace_id) |
-| `server_transport` / `client_transport` | **transport** | Поведінка залежно від `ctx.transport` (stdio vs http) |
-| `server_notifications` / `client_notifications` | **notifications** | Сервер шле `*ListChanged`; клієнт ловить через `message_handler` |
-| `server_access` / `client_access` | **resources/prompts** | Інструмент читає власні `resources` і `prompts` через `ctx.read_resource/get_prompt` |
-
-**Відповідність граней робочому серверу:**
-
-- logging → усі read-інструменти (`ctx.info`)
-- resources → `resource://schema`
-- progress → `export_specs`
-- elicitation → `set_product_status` (підтвердження перед записом)
-- errors → `get_product` / `set_product_status` (`raise ValueError` на невідомий slug/статус)
-
----
-
-## 5. Як запускати
+## 4. Як запускати
 
 Передумови: MySQL-контейнер `context-examples-db-1` піднятий на `127.0.0.1:3307`;
 є `.venv` (створене через `uv`) з `fastmcp` + `pymysql`; налаштований `.env`.
@@ -241,7 +210,7 @@ fastmcp dev inspector server_aerodefences.py
 
 ---
 
-## 6. Ключові інваріанти й запобіжники
+## 5. Ключові інваріанти й запобіжники
 
 - **Валідація статусу** — тільки `draft/published/archived`, інакше `ValueError`.
 - **Ідемпотентність** — якщо новий статус == поточний, запис не виконується.
@@ -253,7 +222,7 @@ fastmcp dev inspector server_aerodefences.py
 
 ---
 
-## 7. Оновлена архітектура (v0.2): RAG, безпека, інфраструктура
+## 6. Оновлена архітектура (v0.2): RAG, безпека, інфраструктура
 
 Схема нижче рендериться прямо на GitHub. Редагована версія — `architecture.drawio`
 (відкрити на [draw.io](https://app.diagrams.net)).
@@ -327,7 +296,7 @@ Python, детермінований, працює офлайн і в CI. Пер
   `ADD_ROLE` (дефолт `admin` локально; у Docker — `viewer`).
 - **Бар'єр `_require_role`** спрацьовує в єдиному чокпоінті `_confirm` (і в
   `set_product_status`) — **до** діалогу підтвердження.
-- Решта запобіжників — див. розділ 6 і `PROMPT_BOOK.md` (§3).
+- Решта запобіжників — див. розділ 5 і `PROMPT_BOOK.md` (§3).
 
 ### 7.4. Моніторинг
 
