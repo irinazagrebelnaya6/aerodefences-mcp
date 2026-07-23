@@ -1,7 +1,7 @@
 # Refactor Plan — AeroDefences MCP Server
 
 План усунення 6 зауважень код-рев'ю щодо стилю та продуктивності. Це **не баги**,
-а полірування («для курсової не критично»), тож головна умова — **поведінка й
+а полірування, тож головна умова — **поведінка й
 публічний API лишаються незмінними**:
 
 - 32 інструменти + 1 ресурс (`resource://schema`) + 1 prompt (`compliance_report`);
@@ -20,8 +20,8 @@
 
 | # | Зауваження | Рішення | Фаза | Ризик | Статус |
 |---|-----------|---------|------|-------|--------|
-| 3 | `get_product` завелика (5 таблиць в одній функції) | Витягти `_load_specs/_features/_faqs/_images/_use_cases` | A | низький | ⬜ |
-| 4 | Послідовні `await query()` (повільно) | `asyncio.gather` для НЕЗАЛЕЖНИХ запитів (`get_product`, `catalog_stats`) | A | середній | ⬜ |
+| 3 | `get_product` завелика (5 таблиць в одній функції) | Витягти `_load_specs/_features/_faqs/_images/_use_cases` | A | низький | ✅ |
+| 4 | Послідовні `await query()` (повільно) | `asyncio.gather` для НЕЗАЛЕЖНИХ запитів (`get_product`, `catalog_stats`) | A | середній | ✅ |
 | 1 | Забагато глобалів (`POOL`, `DB_CONFIG`, `TRANSPORT`, `METRICS`, `ROLES`, …) | `@dataclass Config`, `class Database`, `class Metrics` + синглтони; зберегти module-alias `query`/`METRICS` | B | середній | ⬜ |
 | 6 | Повтор SQL (`SELECT … FROM products WHERE …`) | Спільні шматки (колонки, `by_slug`) — вбирається Repository | C | середній | ⬜ |
 | 2 | Повтор `query()` у кожному інструменті | `ProductRepository` / `CategoryRepository` / `FaqRepository` | C | вищий | ⬜ |
@@ -46,7 +46,7 @@
 
 ## Фази
 
-### Фаза A — `get_product` (п.3 + п.4) · низький ризик, висока віддача
+### ✅ Фаза A — `get_product` (п.3 + п.4) · низький ризик, висока віддача
 - Розбити `get_product` (у `ad_tools_read.py`) на приватні `_load_specs`,
   `_load_features`, `_load_use_cases`, `_load_faqs`, `_load_images`.
 - Обгорнути 5 незалежних дозапитів у `asyncio.gather` → картка товару збирається

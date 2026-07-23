@@ -5,6 +5,7 @@ READ-інструменти каталогу + контекст/транспор
 хід через ctx. Стеля `MAX_LIMIT` захищає від «витягни весь каталог».
 """
 
+import asyncio
 import time
 
 from fastmcp.dependencies import CurrentContext
@@ -108,6 +109,49 @@ async def find_products(
     return rows
 
 
+# Незалежні дозапити картки товару — кожен зі своєї таблиці за product_id.
+# Винесені окремо, щоб `get_product` лишалась короткою і щоб їх можна було
+# виконати паралельно (asyncio.gather).
+async def _load_specs(pid: int) -> list[dict]:
+    return await query(
+        "SELECT spec_group, spec_name, spec_value FROM product_specs "
+        "WHERE product_id = %s ORDER BY sort_order, id",
+        (pid,),
+    )
+
+
+async def _load_features(pid: int) -> list[dict]:
+    return await query(
+        "SELECT title, body FROM product_features "
+        "WHERE product_id = %s ORDER BY position, id",
+        (pid,),
+    )
+
+
+async def _load_use_cases(pid: int) -> list[dict]:
+    return await query(
+        "SELECT title, subtitle FROM product_use_cases "
+        "WHERE product_id = %s ORDER BY sort_order, id",
+        (pid,),
+    )
+
+
+async def _load_faqs(pid: int) -> list[dict]:
+    return await query(
+        "SELECT question, answer FROM product_faqs "
+        "WHERE product_id = %s ORDER BY sort_order, id",
+        (pid,),
+    )
+
+
+async def _load_images(pid: int) -> list[dict]:
+    return await query(
+        "SELECT url, alt, is_primary FROM product_images "
+        "WHERE product_id = %s ORDER BY is_primary DESC, sort_order, id",
+        (pid,),
+    )
+
+
 @mcp.tool
 async def get_product(
     slug: str,
@@ -128,32 +172,20 @@ async def get_product(
     product = products[0]
     pid = product["id"]
 
-    # Пов'язані таблиці — по одному запиту на кожну (за product_id)
-    product["specs"] = await query(
-        "SELECT spec_group, spec_name, spec_value FROM product_specs "
-        "WHERE product_id = %s ORDER BY sort_order, id",
-        (pid,),
+    # Пов'язані таблиці — незалежні запити за product_id, виконуємо ПАРАЛЕЛЬНО
+    # (asyncio.gather): результат ідентичний, але картка збирається швидше.
+    specs, features, use_cases, faqs, images = await asyncio.gather(
+        _load_specs(pid),
+        _load_features(pid),
+        _load_use_cases(pid),
+        _load_faqs(pid),
+        _load_images(pid),
     )
-    product["features"] = await query(
-        "SELECT title, body FROM product_features "
-        "WHERE product_id = %s ORDER BY position, id",
-        (pid,),
-    )
-    product["use_cases"] = await query(
-        "SELECT title, subtitle FROM product_use_cases "
-        "WHERE product_id = %s ORDER BY sort_order, id",
-        (pid,),
-    )
-    product["faqs"] = await query(
-        "SELECT question, answer FROM product_faqs "
-        "WHERE product_id = %s ORDER BY sort_order, id",
-        (pid,),
-    )
-    product["images"] = await query(
-        "SELECT url, alt, is_primary FROM product_images "
-        "WHERE product_id = %s ORDER BY is_primary DESC, sort_order, id",
-        (pid,),
-    )
+    product["specs"] = specs
+    product["features"] = features
+    product["use_cases"] = use_cases
+    product["faqs"] = faqs
+    product["images"] = images
 
     await ctx.info(
         "get_product done",
@@ -284,29 +316,32 @@ async def catalog_stats(ctx: Context = CurrentContext()) -> dict:
     та категоріями, кількість NDAA-сумісних і Made in USA."""
     await ctx.info("catalog_stats")
 
-    total = (await query("SELECT COUNT(*) AS n FROM products"))[0]["n"]
-    by_status = await query(
-        "SELECT status, COUNT(*) AS n FROM products GROUP BY status ORDER BY status"
-    )
-    by_category = await query(
-        """
-        SELECT c.name AS category, COUNT(p.id) AS n
-        FROM categories c
-        LEFT JOIN products p ON p.category_id = c.id
-        GROUP BY c.id
-        ORDER BY n DESC, c.name
-        """
-    )
-    flags = (
-        await query(
+    # Чотири незалежні агрегати — паралельно (asyncio.gather).
+    total_row, by_status, by_category, flags_rows = await asyncio.gather(
+        query("SELECT COUNT(*) AS n FROM products"),
+        query(
+            "SELECT status, COUNT(*) AS n FROM products GROUP BY status ORDER BY status"
+        ),
+        query(
+            """
+            SELECT c.name AS category, COUNT(p.id) AS n
+            FROM categories c
+            LEFT JOIN products p ON p.category_id = c.id
+            GROUP BY c.id
+            ORDER BY n DESC, c.name
+            """
+        ),
+        query(
             """
             SELECT
               SUM(is_ndaa_compliant) AS ndaa_compliant,
               SUM(is_made_in_usa)    AS made_in_usa
             FROM products
             """
-        )
-    )[0]
+        ),
+    )
+    total = total_row[0]["n"]
+    flags = flags_rows[0]
 
     result = {
         "total_products": total,
