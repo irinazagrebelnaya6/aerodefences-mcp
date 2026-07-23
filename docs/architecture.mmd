@@ -1,0 +1,34 @@
+flowchart TB
+    user["Користувач<br/>(менеджер / замовник)"]
+    host["LLM-хост / MCP-клієнт<br/>Claude Code · читає system prompt,<br/>обирає інструмент"]
+
+    subgraph SRV["MCP-СЕРВЕР · server_aerodefences.py (FastMCP)"]
+        route["Маршрутизація<br/>(опис інструментів → вибір)"]
+        rbac["RBAC-бар'єр<br/>_require_role: viewer/editor/admin"]
+        elicit["Elicitation<br/>підтвердження перед write"]
+        rt["READ-інструменти<br/>list/find/get_product, search_specs…"]
+        wt["WRITE-інструменти<br/>update_*, set_compliance, bulk_*"]
+        rag["RAG-retriever<br/>ask_catalog · rag_index.py (TF-IDF)"]
+        mem["Пам'ять сесії<br/>selection-cart (ctx.set_state)"]
+        mon["Моніторинг<br/>healthcheck / metrics + логи"]
+        res["resource://schema<br/>+ prompt compliance_report"]
+    end
+
+    db[("MySQL 8.4<br/>aerodefences")]
+    files[/"knowledge/*.md<br/>політики, глосарій"/]
+
+    subgraph INFRA["Інфраструктура"]
+        docker["Docker + compose<br/>mcp + mysql + db/init.sql"]
+        ci["GitHub Actions CI<br/>ruff + pytest"]
+    end
+
+    user --> host
+    host -- "JSON-RPC (stdio / http)" --> SRV
+    wt -. "gate" .-> rbac
+    wt -. "confirm" .-> elicit
+    rt --> db
+    wt --> db
+    rag --> db
+    rag --> files
+    docker -. deploy .-> SRV
+    ci -. verifies .-> SRV

@@ -1,0 +1,113 @@
+<mxfile host="app.diagrams.net" version="24.0.0">
+  <diagram name="AeroDefences MCP" id="aerodefences-mcp">
+    <mxGraphModel dx="1050" dy="720" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="820" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- USER -->
+        <mxCell id="user" value="Користувач&#10;(менеджер / замовник)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="440" y="30" width="220" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- LLM HOST -->
+        <mxCell id="host" value="LLM-хост / MCP-клієнт&#10;(Claude Code / Desktop)&#10;— читає system prompt, обирає інструмент" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="400" y="130" width="300" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- MCP SERVER CONTAINER -->
+        <mxCell id="server" value="MCP-СЕРВЕР · server_aerodefences.py (FastMCP)" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="120" y="270" width="860" height="300" as="geometry" />
+        </mxCell>
+
+        <mxCell id="routing" value="Маршрутизація&#10;(опис інструментів → вибір)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="150" y="320" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="rbac" value="RBAC-бар'єр&#10;_require_role (viewer/editor/admin)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="380" y="320" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="elicit" value="Elicitation&#10;підтвердження перед write" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="610" y="320" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="readtools" value="READ-інструменти&#10;list/find/get_product, search_specs,&#10;catalog_stats, low_stock …" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="150" y="410" width="230" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="writetools" value="WRITE-інструменти&#10;update_price/stock/status, add_*,&#10;set_compliance, bulk_* (аудит)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="410" y="410" width="230" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="rag" value="RAG-retriever&#10;ask_catalog / rebuild_rag_index&#10;(TF-IDF, rag_index.py)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="670" y="410" width="230" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="memory" value="Пам'ять / стан сесії&#10;selection-cart (ctx.set_state)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="150" y="500" width="230" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="mon" value="Моніторинг&#10;healthcheck / metrics + логування" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="410" y="500" width="230" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="resource" value="Ресурс resource://schema&#10;+ prompt compliance_report" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="670" y="500" width="230" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- SOURCES -->
+        <mxCell id="mysql" value="MySQL 8.4&#10;БД aerodefences&#10;(products, specs, faqs …)" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="230" y="640" width="180" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="files" value="Локальні файли&#10;knowledge/*.md&#10;(політики, глосарій)" style="shape=note;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="700" y="640" width="180" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- INFRA -->
+        <mxCell id="infra" value="ІНФРАСТРУКТУРА" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="120" y="30" width="250" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="docker" value="Docker + docker-compose&#10;(mcp + mysql + db/init.sql)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="140" y="70" width="210" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="ci" value="GitHub Actions CI&#10;ruff + pytest (mysql service)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="140" y="125" width="210" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="env" value=".env / env vars (секрети, ADD_ROLE, транспорт)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="730" y="130" width="250" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- EDGES -->
+        <mxCell id="e1" style="endArrow=classic;html=1;" edge="1" parent="1" source="user" target="host">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" value="JSON-RPC (stdio / http)" style="endArrow=classic;html=1;fontSize=10;" edge="1" parent="1" source="host" target="server">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" style="endArrow=classic;html=1;" edge="1" parent="1" source="readtools" target="mysql">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" style="endArrow=classic;html=1;" edge="1" parent="1" source="writetools" target="mysql">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" style="endArrow=classic;html=1;" edge="1" parent="1" source="rag" target="mysql">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" style="endArrow=classic;html=1;" edge="1" parent="1" source="rag" target="files">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" value="write → gate" style="endArrow=classic;html=1;fontSize=10;dashed=1;" edge="1" parent="1" source="writetools" target="rbac">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" style="endArrow=classic;html=1;fontSize=10;dashed=1;" edge="1" parent="1" source="writetools" target="elicit">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" value="deploy" style="endArrow=classic;html=1;fontSize=10;dashed=1;" edge="1" parent="1" source="docker" target="server">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
