@@ -1,8 +1,9 @@
 """
 READ-інструменти каталогу + контекст/транспорт/моніторинг (усі read-only).
 
-Нічого не змінюють у БД. Кожен обирає найточніший запит під намір і логує
-хід через ctx. Стеля `MAX_LIMIT` захищає від «витягни весь каталог».
+Нічого не змінюють у БД. Доступ до даних — через Repository-шар
+(`product_repo` / `category_repo` / `faq_repo`), а не «сирі» запити. Стеля
+`MAX_LIMIT` захищає від «витягни весь каталог».
 """
 
 import asyncio
@@ -13,8 +14,8 @@ from fastmcp.server.context import Context
 
 import rag_index
 from ad_config import ALLOWED_STATUSES, MAX_LIMIT, log, mcp
-from ad_db import query
 from ad_metrics import METRICS
+from ad_repositories import category_repo, faq_repo, product_repo
 from ad_security import _current_role
 
 
@@ -26,18 +27,7 @@ async def list_products(
     """Повертає опубліковані продукти каталогу (id, name, sku, сумісність)."""
     limit = max(1, min(limit, MAX_LIMIT))
     await ctx.info(f"list_products(limit={limit})")
-
-    rows = await query(
-        """
-        SELECT id, name, sku, is_ndaa_compliant, is_made_in_usa, status
-        FROM products
-        WHERE status = 'published'
-        ORDER BY sort_order, id
-        LIMIT %s
-        """,
-        (limit,),
-    )
-
+    rows = await product_repo.list_published(limit)
     await ctx.info("list_products done", extra={"rows": len(rows)})
     return rows
 
@@ -60,96 +50,16 @@ async def find_products(
     Приклад сценарію: ndaa_compliant=False, status='published'
     -> опубліковані НЕ NDAA-сумісні продукти."""
     limit = max(1, min(limit, MAX_LIMIT))
-
-    where = []
-    params: list = []
-
-    if status is not None:
-        if status not in ALLOWED_STATUSES:
-            raise ValueError(f"Недопустимий статус '{status}'")
-        where.append("p.status = %s")
-        params.append(status)
-
-    if ndaa_compliant is not None:
-        where.append("p.is_ndaa_compliant = %s")
-        params.append(1 if ndaa_compliant else 0)
-
-    if made_in_usa is not None:
-        where.append("p.is_made_in_usa = %s")
-        params.append(1 if made_in_usa else 0)
-
-    if category is not None:
-        where.append("c.slug = %s")
-        params.append(category)
-
-    if search is not None:
-        where.append("(p.name LIKE %s OR p.sku LIKE %s)")
-        params.extend([f"%{search}%", f"%{search}%"])
-
-    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
-    params.append(limit)
-
-    sql = f"""
-        SELECT p.id, p.name, p.sku, p.status,
-               p.is_ndaa_compliant, p.is_made_in_usa,
-               c.name AS category
-        FROM products p
-        LEFT JOIN categories c ON c.id = p.category_id
-        {where_sql}
-        ORDER BY p.sort_order, p.id
-        LIMIT %s
-    """
     await ctx.info(
         "find_products",
         extra={"status": status, "ndaa": ndaa_compliant,
                "usa": made_in_usa, "category": category, "search": search},
     )
-    rows = await query(sql, tuple(params))
+    rows = await product_repo.search(
+        status, ndaa_compliant, made_in_usa, category, search, limit, ALLOWED_STATUSES
+    )
     await ctx.info("find_products done", extra={"rows": len(rows)})
     return rows
-
-
-# Незалежні дозапити картки товару — кожен зі своєї таблиці за product_id.
-# Винесені окремо, щоб `get_product` лишалась короткою і щоб їх можна було
-# виконати паралельно (asyncio.gather).
-async def _load_specs(pid: int) -> list[dict]:
-    return await query(
-        "SELECT spec_group, spec_name, spec_value FROM product_specs "
-        "WHERE product_id = %s ORDER BY sort_order, id",
-        (pid,),
-    )
-
-
-async def _load_features(pid: int) -> list[dict]:
-    return await query(
-        "SELECT title, body FROM product_features "
-        "WHERE product_id = %s ORDER BY position, id",
-        (pid,),
-    )
-
-
-async def _load_use_cases(pid: int) -> list[dict]:
-    return await query(
-        "SELECT title, subtitle FROM product_use_cases "
-        "WHERE product_id = %s ORDER BY sort_order, id",
-        (pid,),
-    )
-
-
-async def _load_faqs(pid: int) -> list[dict]:
-    return await query(
-        "SELECT question, answer FROM product_faqs "
-        "WHERE product_id = %s ORDER BY sort_order, id",
-        (pid,),
-    )
-
-
-async def _load_images(pid: int) -> list[dict]:
-    return await query(
-        "SELECT url, alt, is_primary FROM product_images "
-        "WHERE product_id = %s ORDER BY is_primary DESC, sort_order, id",
-        (pid,),
-    )
 
 
 @mcp.tool
@@ -161,10 +71,7 @@ async def get_product(
     use_cases, faqs, images (дані зібрані з кількох таблиць)."""
     await ctx.info(f"get_product(slug={slug!r})")
 
-    products = await query(
-        "SELECT * FROM products WHERE slug = %s AND status = 'published'",
-        (slug,),
-    )
+    products = await product_repo.get_full_published(slug)
     if not products:
         await ctx.warning(f"product not found: {slug!r}")
         raise ValueError(f"Продукт зі slug '{slug}' не знайдено")
@@ -175,11 +82,11 @@ async def get_product(
     # Пов'язані таблиці — незалежні запити за product_id, виконуємо ПАРАЛЕЛЬНО
     # (asyncio.gather): результат ідентичний, але картка збирається швидше.
     specs, features, use_cases, faqs, images = await asyncio.gather(
-        _load_specs(pid),
-        _load_features(pid),
-        _load_use_cases(pid),
-        _load_faqs(pid),
-        _load_images(pid),
+        product_repo.specs(pid),
+        product_repo.features(pid),
+        product_repo.use_cases(pid),
+        faq_repo.by_product(pid),
+        product_repo.images(pid),
     )
     product["specs"] = specs
     product["features"] = features
@@ -202,16 +109,7 @@ async def get_product(
 async def list_categories(ctx: Context = CurrentContext()) -> list[dict]:
     """Список категорій каталогу з кількістю товарів у кожній."""
     await ctx.info("list_categories")
-    rows = await query(
-        """
-        SELECT c.id, c.slug, c.name, c.sort_order, c.is_visible,
-               COUNT(p.id) AS products
-        FROM categories c
-        LEFT JOIN products p ON p.category_id = c.id
-        GROUP BY c.id
-        ORDER BY c.sort_order, c.name
-        """
-    )
+    rows = await category_repo.list_with_counts()
     await ctx.info("list_categories done", extra={"rows": len(rows)})
     return rows
 
@@ -220,24 +118,13 @@ async def list_categories(ctx: Context = CurrentContext()) -> list[dict]:
 async def get_category(slug: str, ctx: Context = CurrentContext()) -> dict:
     """Категорія за slug + усі її товари (будь-якого статусу)."""
     await ctx.info(f"get_category(slug={slug!r})")
-    cats = await query(
-        "SELECT id, slug, name, sort_order, is_visible FROM categories WHERE slug = %s",
-        (slug,),
-    )
+    cats = await category_repo.get(slug)
     if not cats:
         await ctx.warning(f"category not found: {slug!r}")
         raise ValueError(f"Категорію зі slug '{slug}' не знайдено")
 
     category = cats[0]
-    category["products"] = await query(
-        """
-        SELECT id, name, sku, slug, status, price, currency
-        FROM products
-        WHERE category_id = %s
-        ORDER BY sort_order, id
-        """,
-        (category["id"],),
-    )
+    category["products"] = await category_repo.products_of(category["id"])
     await ctx.info("get_category done", extra={"products": len(category["products"])})
     return category
 
@@ -253,18 +140,7 @@ async def search_specs(
     Приклад: search='CAN' -> усі продукти з CAN в specs."""
     limit = max(1, min(limit, MAX_LIMIT))
     await ctx.info(f"search_specs(search={search!r})")
-    rows = await query(
-        """
-        SELECT p.name AS product, p.slug, p.status,
-               s.spec_group, s.spec_name, s.spec_value
-        FROM product_specs s
-        JOIN products p ON p.id = s.product_id
-        WHERE s.spec_name LIKE %s OR s.spec_value LIKE %s
-        ORDER BY p.sort_order, p.id, s.sort_order
-        LIMIT %s
-        """,
-        (f"%{search}%", f"%{search}%", limit),
-    )
+    rows = await product_repo.search_specs(search, limit)
     await ctx.info("search_specs done", extra={"rows": len(rows)})
     return rows
 
@@ -273,15 +149,11 @@ async def search_specs(
 async def get_faqs(slug: str, ctx: Context = CurrentContext()) -> list[dict]:
     """Тільки FAQ (питання/відповіді) конкретного продукту за slug."""
     await ctx.info(f"get_faqs(slug={slug!r})")
-    prod = await query("SELECT id, name FROM products WHERE slug = %s", (slug,))
+    prod = await product_repo.get_id_name(slug)
     if not prod:
         await ctx.warning(f"product not found: {slug!r}")
         raise ValueError(f"Продукт зі slug '{slug}' не знайдено")
-    rows = await query(
-        "SELECT question, answer FROM product_faqs "
-        "WHERE product_id = %s ORDER BY sort_order, id",
-        (prod[0]["id"],),
-    )
+    rows = await faq_repo.by_product(prod[0]["id"])
     await ctx.info("get_faqs done", extra={"rows": len(rows)})
     return rows
 
@@ -291,21 +163,11 @@ async def related_products(slug: str, ctx: Context = CurrentContext()) -> list[d
     """Пов'язані продукти (compatible/accessory/related/replacement) за slug.
     Показує, з чим товар працює як єдина система."""
     await ctx.info(f"related_products(slug={slug!r})")
-    prod = await query("SELECT id, name FROM products WHERE slug = %s", (slug,))
+    prod = await product_repo.get_id_name(slug)
     if not prod:
         await ctx.warning(f"product not found: {slug!r}")
         raise ValueError(f"Продукт зі slug '{slug}' не знайдено")
-    rows = await query(
-        """
-        SELECT r.relation_type, r.group_label, r.label,
-               rp.name AS related_name, rp.slug AS related_slug, rp.status
-        FROM product_relations r
-        LEFT JOIN products rp ON rp.id = r.related_product_id
-        WHERE r.product_id = %s
-        ORDER BY r.relation_type, r.id
-        """,
-        (prod[0]["id"],),
-    )
+    rows = await product_repo.related(prod[0]["id"])
     await ctx.info("related_products done", extra={"rows": len(rows)})
     return rows
 
@@ -317,31 +179,12 @@ async def catalog_stats(ctx: Context = CurrentContext()) -> dict:
     await ctx.info("catalog_stats")
 
     # Чотири незалежні агрегати — паралельно (asyncio.gather).
-    total_row, by_status, by_category, flags_rows = await asyncio.gather(
-        query("SELECT COUNT(*) AS n FROM products"),
-        query(
-            "SELECT status, COUNT(*) AS n FROM products GROUP BY status ORDER BY status"
-        ),
-        query(
-            """
-            SELECT c.name AS category, COUNT(p.id) AS n
-            FROM categories c
-            LEFT JOIN products p ON p.category_id = c.id
-            GROUP BY c.id
-            ORDER BY n DESC, c.name
-            """
-        ),
-        query(
-            """
-            SELECT
-              SUM(is_ndaa_compliant) AS ndaa_compliant,
-              SUM(is_made_in_usa)    AS made_in_usa
-            FROM products
-            """
-        ),
+    total, by_status, by_category, flags = await asyncio.gather(
+        product_repo.count_total(),
+        product_repo.count_by_status(),
+        category_repo.count_by_category(),
+        product_repo.compliance_flags(),
     )
-    total = total_row[0]["n"]
-    flags = flags_rows[0]
 
     result = {
         "total_products": total,
@@ -359,15 +202,7 @@ async def low_stock(threshold: int = 10, ctx: Context = CurrentContext()) -> lis
     """Товари із залишком на складі <= threshold.
     Продукти з невідомим залишком (NULL) до вибірки не потрапляють."""
     await ctx.info(f"low_stock(threshold={threshold})")
-    rows = await query(
-        """
-        SELECT id, name, sku, slug, status, stock_quantity
-        FROM products
-        WHERE stock_quantity IS NOT NULL AND stock_quantity <= %s
-        ORDER BY stock_quantity, id
-        """,
-        (threshold,),
-    )
+    rows = await product_repo.low_stock(threshold)
     await ctx.info("low_stock done", extra={"rows": len(rows)})
     return rows
 
@@ -381,21 +216,7 @@ async def find_products_by_price(
     """Товари у ціновому діапазоні (обидві межі — необов'язкові).
     Товари без ціни (NULL) до вибірки не потрапляють."""
     await ctx.info(f"find_products_by_price(min={min_price}, max={max_price})")
-    where = ["price IS NOT NULL"]
-    params: list = []
-    if min_price is not None:
-        where.append("price >= %s")
-        params.append(min_price)
-    if max_price is not None:
-        where.append("price <= %s")
-        params.append(max_price)
-    sql = f"""
-        SELECT id, name, sku, slug, status, price, currency
-        FROM products
-        WHERE {' AND '.join(where)}
-        ORDER BY price, id
-    """
-    rows = await query(sql, tuple(params))
+    rows = await product_repo.by_price(min_price, max_price)
     await ctx.info("find_products_by_price done", extra={"rows": len(rows)})
     return rows
 
@@ -404,21 +225,14 @@ async def find_products_by_price(
 async def export_specs(ctx: Context = CurrentContext()) -> dict:
     """Вивантажує технічні характеристики (specs) для ВСІХ опублікованих
     продуктів. Довга операція — повідомляє прогрес через ctx.report_progress."""
-    products = await query(
-        "SELECT id, name, sku FROM products "
-        "WHERE status = 'published' ORDER BY sort_order, id"
-    )
+    products = await product_repo.list_published_basic()
     total = len(products)
     await ctx.info("export_specs started", extra={"products": total})
 
     items = []
     for i, p in enumerate(products):
         await ctx.report_progress(progress=i, total=total)  # грань progress
-        specs = await query(
-            "SELECT spec_group, spec_name, spec_value FROM product_specs "
-            "WHERE product_id = %s ORDER BY sort_order, id",
-            (p["id"],),
-        )
+        specs = await product_repo.specs(p["id"])
         items.append({"sku": p["sku"], "name": p["name"], "specs": specs})
 
     await ctx.report_progress(progress=total, total=total)  # 100%
@@ -470,20 +284,14 @@ async def catalog_report(ctx: Context = CurrentContext()) -> str:
     transport = ctx.transport
     server_name = ctx.fastmcp.name
 
-    stats = (await query(
-        "SELECT COUNT(*) AS n, SUM(status='published') AS pub FROM products"
-    ))[0]
+    stats = await product_repo.count_published_summary()
 
     await ctx.info("catalog_report", extra={"transport": transport})
 
     if transport == "stdio":
         body = f"Підсумок: {stats['n']} продуктів, опубліковано {stats['pub']}."
     elif transport in ("sse", "streamable-http", "http"):
-        by_cat = await query(
-            "SELECT c.name, COUNT(*) AS n FROM products p "
-            "LEFT JOIN categories c ON c.id = p.category_id "
-            "GROUP BY c.name ORDER BY n DESC"
-        )
+        by_cat = await category_repo.count_by_category_named()
         lines = "\n".join(f"  - {r['name']}: {r['n']}" for r in by_cat)
         body = (f"Детальний звіт: {stats['n']} продуктів "
                 f"(опубліковано {stats['pub']}).\nЗа категоріями:\n{lines}")
@@ -502,8 +310,7 @@ async def healthcheck(ctx: Context = CurrentContext()) -> dict:
     Read-only, доступний будь-якій ролі — для liveness/readiness-проб."""
     db_ok, db_error, products = True, None, None
     try:
-        row = (await query("SELECT COUNT(*) AS n FROM products"))[0]
-        products = row["n"]
+        products = await product_repo.count_total()
     except Exception as e:  # noqa: BLE001 - у healthcheck ловимо все свідомо
         # Назовні — нейтральне повідомлення; повні деталі (хост/SQL/стек) лише в лог.
         db_ok = False

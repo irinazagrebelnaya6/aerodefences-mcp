@@ -29,7 +29,7 @@ dev = [
 py-modules = [
     "server_aerodefences", "rag_index",
     "ad_config", "ad_metrics", "ad_db", "ad_security",
-    "ad_resources", "ad_prompts",
+    "ad_repositories", "ad_resources", "ad_prompts",
     "ad_tools_read", "ad_tools_write", "ad_tools_rag",
 ]
 

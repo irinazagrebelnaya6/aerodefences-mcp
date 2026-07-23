@@ -2,8 +2,9 @@
 WRITE-інструменти каталогу + «кошик вибраних продуктів» (стан сесії).
 
 Кожен запис проходить бар'єр `_confirm` (RBAC + підтвердження людини) і йде
-через `_run_write` (commit + нотифікація). Стан вибору живе в Redis
-(`ADD_REDIS_URL`) або, як фолбек, у памʼяті сесії процесу.
+через Repository-шар (`product_repo` / `category_repo` / `faq_repo`), який
+інкапсулює SQL та commit. Стан вибору живе в Redis (`ADD_REDIS_URL`) або, як
+фолбек, у памʼяті сесії процесу.
 """
 
 import asyncio
@@ -25,7 +26,7 @@ from ad_config import (
     SELECTION_TTL,
     mcp,
 )
-from ad_db import _run_write, query
+from ad_repositories import category_repo, faq_repo, product_repo
 from ad_security import _confirm, _require_role
 
 
@@ -48,9 +49,7 @@ async def set_product_status(
         )
 
     # 2) перевіряємо, що продукт існує, і показуємо поточний статус
-    rows = await query(
-        "SELECT id, name, status FROM products WHERE slug = %s", (slug,)
-    )
+    rows = await product_repo.get_id_name_status(slug)
     if not rows:
         raise ValueError(f"Продукт зі slug '{slug}' не знайдено")
 
@@ -81,10 +80,7 @@ async def set_product_status(
             return "Операцію перервано."
 
     # 4) сам запис
-    affected = await _run_write(
-        "UPDATE products SET status = %s WHERE id = %s",
-        (status, product["id"]),
-    )
+    affected = await product_repo.set_status(product["id"], status)
     await ctx.info(
         "set_product_status done",
         extra={"slug": slug, "from": current, "to": status, "affected": affected},
@@ -94,7 +90,7 @@ async def set_product_status(
 
 async def _get_product_row(slug: str) -> dict:
     """Повертає базовий рядок продукту або кидає ValueError."""
-    rows = await query("SELECT * FROM products WHERE slug = %s", (slug,))
+    rows = await product_repo.get_row(slug)
     if not rows:
         raise ValueError(f"Продукт зі slug '{slug}' не знайдено")
     return rows[0]
@@ -113,14 +109,11 @@ async def update_price(
         raise ValueError("Ціна не може бути від'ємною")
     p = await _get_product_row(slug)
 
-    sets, params = ["price = %s"], [price]
     cur_desc = f"{p['price']} {p['currency']}"
     new_desc = f"{price} {p['currency']}"
     if currency is not None:
         if len(currency) != 3:
             raise ValueError("Код валюти має бути 3 символи (напр. 'USD')")
-        sets.append("currency = %s")
-        params.append(currency.upper())
         new_desc = f"{price} {currency.upper()}"
 
     ok, reason = await _confirm(
@@ -129,8 +122,7 @@ async def update_price(
     if not ok:
         return reason
 
-    params.append(p["id"])
-    n = await _run_write(f"UPDATE products SET {', '.join(sets)} WHERE id = %s", tuple(params))
+    n = await product_repo.set_price(p["id"], price, currency)
     await ctx.info("update_price done", extra={"slug": slug, "to": new_desc, "affected": n})
     return f"OK: '{p['name']}' ціна -> {new_desc} (змінено рядків: {n})"
 
@@ -152,9 +144,7 @@ async def update_stock(
     if not ok:
         return reason
 
-    n = await _run_write(
-        "UPDATE products SET stock_quantity = %s WHERE id = %s", (quantity, p["id"])
-    )
+    n = await product_repo.set_stock(p["id"], quantity)
     await ctx.info("update_stock done", extra={"slug": slug, "to": quantity, "affected": n})
     return f"OK: '{p['name']}' залишок {p['stock_quantity']} -> {quantity} (рядків: {n})"
 
@@ -172,14 +162,10 @@ async def set_compliance(
         raise ValueError("Вкажіть хоча б один прапорець: ndaa або made_in_usa")
     p = await _get_product_row(slug)
 
-    sets, params, changes = [], [], []
+    changes = []
     if ndaa is not None:
-        sets.append("is_ndaa_compliant = %s")
-        params.append(1 if ndaa else 0)
         changes.append(f"NDAA {bool(p['is_ndaa_compliant'])} -> {ndaa}")
     if made_in_usa is not None:
-        sets.append("is_made_in_usa = %s")
-        params.append(1 if made_in_usa else 0)
         changes.append(f"Made in USA {bool(p['is_made_in_usa'])} -> {made_in_usa}")
 
     ok, reason = await _confirm(
@@ -189,8 +175,7 @@ async def set_compliance(
     if not ok:
         return reason
 
-    params.append(p["id"])
-    n = await _run_write(f"UPDATE products SET {', '.join(sets)} WHERE id = %s", tuple(params))
+    n = await product_repo.set_compliance(p["id"], ndaa, made_in_usa)
     await ctx.info("set_compliance done", extra={"slug": slug, "changes": changes, "affected": n})
     return f"OK: '{p['name']}' — {'; '.join(changes)} (рядків: {n})"
 
@@ -220,8 +205,8 @@ async def update_product_field(
     if not ok:
         return reason
 
-    # field вже перевірено по білому списку — безпечно підставити в SQL
-    n = await _run_write(f"UPDATE products SET {field} = %s WHERE id = %s", (value, p["id"]))
+    # field вже перевірено по білому списку — безпечно передати в репозиторій
+    n = await product_repo.set_field(p["id"], field, value)
     await ctx.info("update_product_field done", extra={"slug": slug, "field": field, "affected": n})
     return f"OK: '{p['name']}'.{field} оновлено (рядків: {n})"
 
@@ -236,10 +221,6 @@ async def add_spec(
 ) -> str:
     """Додає нову технічну характеристику продукту. Підтвердження перед записом."""
     p = await _get_product_row(slug)
-    nxt = (await query(
-        "SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM product_specs WHERE product_id = %s",
-        (p["id"],),
-    ))[0]["n"]
 
     ok, reason = await _confirm(
         ctx, f"Додати spec до '{p['name']}': [{spec_group}] {spec_name} = {spec_value!r}?"
@@ -247,11 +228,7 @@ async def add_spec(
     if not ok:
         return reason
 
-    n = await _run_write(
-        "INSERT INTO product_specs (product_id, spec_group, spec_name, spec_value, sort_order) "
-        "VALUES (%s, %s, %s, %s, %s)",
-        (p["id"], spec_group, spec_name, spec_value, nxt),
-    )
+    n = await product_repo.add_spec(p["id"], spec_group, spec_name, spec_value)
     await ctx.info("add_spec done", extra={"slug": slug, "affected": n})
     return f"OK: до '{p['name']}' додано spec [{spec_group}] {spec_name} (рядків: {n})"
 
@@ -265,10 +242,6 @@ async def add_faq(
 ) -> str:
     """Додає нове FAQ (питання/відповідь) продукту. Підтвердження перед записом."""
     p = await _get_product_row(slug)
-    nxt = (await query(
-        "SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM product_faqs WHERE product_id = %s",
-        (p["id"],),
-    ))[0]["n"]
 
     ok, reason = await _confirm(
         ctx, f"Додати FAQ до '{p['name']}'?\nQ: {question}\nA: {answer[:120]}"
@@ -276,11 +249,7 @@ async def add_faq(
     if not ok:
         return reason
 
-    n = await _run_write(
-        "INSERT INTO product_faqs (product_id, question, answer, sort_order, created_at, updated_at) "
-        "VALUES (%s, %s, %s, %s, NOW(), NOW())",
-        (p["id"], question, answer, nxt),
-    )
+    n = await faq_repo.add(p["id"], question, answer)
     await ctx.info("add_faq done", extra={"slug": slug, "affected": n})
     return f"OK: до '{p['name']}' додано FAQ (рядків: {n})"
 
@@ -302,9 +271,7 @@ async def reorder_product(
     if not ok:
         return reason
 
-    n = await _run_write(
-        "UPDATE products SET sort_order = %s WHERE id = %s", (sort_order, p["id"])
-    )
+    n = await product_repo.set_sort_order(p["id"], sort_order)
     await ctx.info("reorder_product done", extra={"slug": slug, "to": sort_order, "affected": n})
     return f"OK: '{p['name']}' позиція {p['sort_order']} -> {sort_order} (рядків: {n})"
 
@@ -321,15 +288,12 @@ async def bulk_set_status(
         raise ValueError(
             f"Недопустимий статус '{status}'. Дозволені: {', '.join(ALLOWED_STATUSES)}"
         )
-    cats = await query("SELECT id, name FROM categories WHERE slug = %s", (category,))
+    cats = await category_repo.get_id_name(category)
     if not cats:
         raise ValueError(f"Категорію зі slug '{category}' не знайдено")
     cat = cats[0]
 
-    cnt = (await query(
-        "SELECT COUNT(*) AS n FROM products WHERE category_id = %s AND status <> %s",
-        (cat["id"], status),
-    ))[0]["n"]
+    cnt = await product_repo.count_in_category_not_status(cat["id"], status)
     if cnt == 0:
         return f"У категорії '{cat['name']}' немає товарів для зміни на '{status}' — no-op."
 
@@ -342,10 +306,7 @@ async def bulk_set_status(
     if not ok:
         return reason
 
-    n = await _run_write(
-        "UPDATE products SET status = %s WHERE category_id = %s AND status <> %s",
-        (status, cat["id"], status),
-    )
+    n = await product_repo.bulk_set_status_by_category(cat["id"], status)
     await ctx.info("bulk_set_status done",
                    extra={"category": category, "status": status, "affected": n})
     return f"OK: у категорії '{cat['name']}' переведено {n} товар(ів) у '{status}'."
@@ -417,7 +378,7 @@ async def select_products(
     Замінює попередній вибір. Неіснуючі slug ігноруються й повертаються окремо."""
     found, missing = [], []
     for s in slugs:
-        rows = await query("SELECT id, name, slug FROM products WHERE slug = %s", (s,))
+        rows = await product_repo.get_id_name_slug(s)
         (found if rows else missing).append(rows[0] if rows else s)
 
     await _set_selection(ctx, found)
@@ -432,7 +393,7 @@ async def select_products(
 @mcp.tool
 async def add_to_selection(slug: str, ctx: Context = CurrentContext()) -> dict:
     """Додати один продукт до поточного вибору (стан сесії)."""
-    rows = await query("SELECT id, name, slug FROM products WHERE slug = %s", (slug,))
+    rows = await product_repo.get_id_name_slug(slug)
     if not rows:
         raise ValueError(f"Продукт зі slug '{slug}' не знайдено")
 
@@ -469,7 +430,7 @@ async def apply_status_to_selection(
 ) -> str:
     """Застосувати статус (draft/published/archived) до ВСІХ вибраних продуктів.
     Демонструє зв'язку state+elicitation: вибір беремо зі стану сесії, а перед
-    масовим записом питаємо підтвердження. Нотифікація спрацює через _run_write."""
+    масовим записом питаємо підтвердження. Нотифікація спрацює через run_write."""
     if status not in ALLOWED_STATUSES:
         raise ValueError(f"Недопустимий статус '{status}'")
 
@@ -486,11 +447,7 @@ async def apply_status_to_selection(
         return reason
 
     ids = [p["id"] for p in selection]
-    placeholders = ", ".join(["%s"] * len(ids))
-    n = await _run_write(
-        f"UPDATE products SET status = %s WHERE id IN ({placeholders})",
-        tuple([status, *ids]),
-    )
+    n = await product_repo.bulk_set_status_by_ids(ids, status)
     await ctx.info("apply_status_to_selection done",
                    extra={"status": status, "affected": n})
     return f"OK: {n} вибраних продуктів переведено у '{status}'."

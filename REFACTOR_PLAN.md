@@ -23,8 +23,8 @@
 | 3 | `get_product` завелика (5 таблиць в одній функції) | Витягти `_load_specs/_features/_faqs/_images/_use_cases` | A | низький | ✅ |
 | 4 | Послідовні `await query()` (повільно) | `asyncio.gather` для НЕЗАЛЕЖНИХ запитів (`get_product`, `catalog_stats`) | A | середній | ✅ |
 | 1 | Забагато глобалів (`POOL`, `DB_CONFIG`, `TRANSPORT`, `METRICS`, `ROLES`, …) | `@dataclass Config`, `class Database`, `class Metrics` + синглтони; зберегти module-alias `query`/`METRICS` | B | середній | ✅ |
-| 6 | Повтор SQL (`SELECT … FROM products WHERE …`) | Спільні шматки (колонки, `by_slug`) — вбирається Repository | C | середній | ⬜ |
-| 2 | Повтор `query()` у кожному інструменті | `ProductRepository` / `CategoryRepository` / `FaqRepository` | C | вищий | ⬜ |
+| 6 | Повтор SQL (`SELECT … FROM products WHERE …`) | Спільні шматки (колонки, `by_slug`) — вбирається Repository | C | середній | ✅ |
+| 2 | Повтор `query()` у кожному інструменті | `ProductRepository` / `CategoryRepository` / `FaqRepository` | C | вищий | ✅ |
 | 5 | Немає кешу | Кешувати **лише** `resource://schema` (реально статична) | D | середній | ⬜ |
 
 ---
@@ -63,7 +63,7 @@
 - **Verify:** `srv.query`, `srv.METRICS` доступні й поводяться як раніше; RBAC-тести
   (`writes_denied`) і round-trip (`writes_committed`) зелені.
 
-### Фаза C — Repository (п.2 + п.6) · вищий ризик, дрібними комітами
+### ✅ Фаза C — Repository (п.2 + п.6) · вищий ризик, дрібними комітами
 - `ProductRepository` (`get_by_slug`, `list_published`, `search`, `by_category`…),
   `CategoryRepository`, `FaqRepository` — інкапсулюють SQL; спільні колонки/`WHERE`
   живуть тут (закриває п.6).
