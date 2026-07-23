@@ -1,0 +1,35 @@
+[project]
+name = "aerodefences-mcp"
+version = "0.2.0"
+description = "MCP-сервер (FastMCP) над каталогом БПЛА-компонентів aerodefences: контекст, RAG, RBAC, моніторинг."
+requires-python = ">=3.12"
+dependencies = [
+    "fastmcp>=3.4",
+    "pymysql>=1.1",
+    "python-dotenv>=1.0",
+    "DBUtils>=3.1",           # пул зʼєднань до MySQL
+    "prometheus-client>=0.20", # метрики /metrics
+    "redis>=5.0",             # спільний сесійний стан (multi-replica)
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.6",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# Навчальні приклади-«грані» не перевіряємо лінтером — вони самостійні.
+extend-exclude = ["учебные-материалы", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+# E501 — довгі рядки в укр. коментарях; E402 — імпорти навмисно після load_dotenv()
+ignore = ["E501", "E402"]
