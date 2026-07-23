@@ -1,7 +1,7 @@
 """
 Інтерактивний тестер для server_aerodefences.py (БЕЗ LLM).
 
-Піднімає сервер і дає простий REPL, де ти сама викликаєш знаряддя.
+Піднімає сервер і дає простий REPL, де знаряддя викликаються вручну.
 Команди:
   tools                     - список знарядь
   schema                    - прочитати resource://schema (перші рядки)
@@ -35,7 +35,7 @@ async def progress_handler(progress, total, message):
 
 
 async def elicitation_handler(message, response_type, params, context):
-    # Тут stdin ДОСТУПНИЙ, тому питаємо тебе по-справжньому
+    # Тут stdin ДОСТУПНИЙ, тому підтвердження запитується по-справжньому
     print(f"\n  [SERVER ПИТАЄ] {message}")
     ans = input("  yes/no (Enter=decline, cancel=abort) > ").strip()
     if ans.lower() == "cancel":

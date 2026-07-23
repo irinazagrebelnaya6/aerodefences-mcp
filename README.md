@@ -5,7 +5,7 @@ MCP-сервіс (FastMCP) над каталогом компонентів дл
 інструменти читання/зміни каталогу, RAG-пошук по даних і локальних політиках,
 контроль доступу (RBAC), підтвердження небезпечних дій та моніторинг.
 
-<!-- Після створення репо додай справжній URL, і бейдж почне показувати статус CI:
+<!-- Після створення репо додати справжній URL, і бейдж почне показувати статус CI:
 ![CI](https://github.com/<user>/<repo>/actions/workflows/ci.yml/badge.svg) -->
 
 > **Бізнес-сценарій.** Корпоративна Q&A + керування каталогом: менеджер природною
@@ -76,7 +76,9 @@ READ/WRITE-інструментів, RAG-retriever'а та памʼяті сес
 
 ## 🔐 Безпека (RBAC)
 
-Роль береться з клієнтських `meta.role` або змінної `ADD_ROLE`:
+Роль визначається сервером залежно від транспорту: у HTTP — з перевіреного JWT
+(claim `role` / scopes), у stdio — зі змінної `ADD_ROLE`. Клієнтські `meta` на
+роль НЕ впливають.
 
 | Роль | Права |
 |---|---|
@@ -84,8 +86,8 @@ READ/WRITE-інструментів, RAG-retriever'а та памʼяті сес
 | `editor` | + звичайні write (ціна, склад, статус, тексти, FAQ) |
 | `admin` | + compliance-прапорці та масові дії |
 
-Дефолт локально — `admin` (щоб harness/REPL працювали без налаштувань); у Docker —
-`viewer` (безпечний деплой). Деталі guardrails — у [`PROMPT_BOOK.md`](PROMPT_BOOK.md).
+Дефолт — `viewer` (deny-by-default); для локального stdio-dev роль піднімається
+через `ADD_DEV_ROLE`. Деталі guardrails — у [`PROMPT_BOOK.md`](PROMPT_BOOK.md).
 
 ---
 
@@ -102,7 +104,7 @@ docker compose up --build
 ### Варіант 2 — локально (venv + наявна MySQL)
 
 ```bash
-cp .env.example .env        # за потреби відредагуй креденшели
+cp .env.example .env        # за потреби відредагувати креденшели
 uv venv && uv pip install -e ".[dev]"   # або pip install -e ".[dev]"
 
 # сценарний harness (повний автопрогін без LLM)
@@ -153,7 +155,7 @@ PROMPT_BOOK.md, ARCHITECTURE.md, DEMO.md, architecture.drawio
 | Змінна | Призначення | Дефолт |
 |---|---|---|
 | `ADD_DB_HOST/PORT/USER/PASSWORD/NAME` | підключення до MySQL | localhost:3306 |
-| `ADD_ROLE` | роль доступу (`viewer/editor/admin`) | `admin` (локально) |
+| `ADD_ROLE` | роль доступу для stdio (`viewer/editor/admin`) | `viewer` |
 | `ADD_TRANSPORT` | `stdio` або `http` | `stdio` |
 | `ADD_HTTP_HOST/PORT` | адреса для HTTP-транспорту | `0.0.0.0:8000` |
 | `ADD_LOG_LEVEL` | рівень логів | `INFO` |

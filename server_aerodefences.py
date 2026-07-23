@@ -122,7 +122,7 @@ mcp = FastMCP(name="AeroDefences Catalog Server", auth=_build_auth())
 
 # --- Налаштування підключення ---
 # Креденшели (user/password) читаються ВИКЛЮЧНО з .env і НЕ зберігаються в коді.
-# Локально скопіюй .env.example -> .env і підстав свої значення.
+# Локально: скопіювати .env.example -> .env і підставити власні значення.
 # Стеля на розмір вибірки read-інструментів (захист від «витягни весь каталог»).
 MAX_LIMIT = int(os.getenv("ADD_MAX_LIMIT", "200"))
 
@@ -1248,7 +1248,7 @@ async def apply_status_to_selection(
 
     selection = await _get_selection(ctx)
     if not selection:
-        return "Вибір порожній. Спершу виклич select_products."
+        return "Вибір порожній. Спершу викликати select_products."
 
     names = ", ".join(p["name"] for p in selection)
     ok, reason = await _confirm(
@@ -1276,7 +1276,7 @@ async def apply_status_to_selection(
 @mcp.tool
 async def rebuild_rag_index(ctx: Context = CurrentContext()) -> dict:
     """Перебудувати RAG-індекс із поточних даних БД + файлів knowledge/*.md.
-    Виклич після масових змін у каталозі, щоб пошук був актуальним.
+    Викликати після масових змін у каталозі, щоб пошук був актуальним.
 
     ⚠️ Multi-replica: індекс тримається в памʼяті процесу, тож цей виклик
     перебудовує лише ту репліку, що обробила запит. Кожна репліка будує свій
