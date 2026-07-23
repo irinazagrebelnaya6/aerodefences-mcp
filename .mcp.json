@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "aerodefences": {
+      "type": "stdio",
+      "command": ".venv/bin/python",
+      "args": [
+        "server_aerodefences.py"
+      ],
+      "env": {
+        "ADD_ROLE": "viewer"
+      }
+    }
+  }
+}
