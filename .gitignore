@@ -8,6 +8,11 @@
 __pycache__/
 *.pyc
 
+# Артефакти збірки (editable install)
+*.egg-info/
+build/
+dist/
+
 # Локальні налаштування Claude Code (шляхи, дозволи, name_map)
 .claude/
 
