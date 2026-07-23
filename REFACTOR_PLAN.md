@@ -22,7 +22,7 @@
 |---|-----------|---------|------|-------|--------|
 | 3 | `get_product` завелика (5 таблиць в одній функції) | Витягти `_load_specs/_features/_faqs/_images/_use_cases` | A | низький | ✅ |
 | 4 | Послідовні `await query()` (повільно) | `asyncio.gather` для НЕЗАЛЕЖНИХ запитів (`get_product`, `catalog_stats`) | A | середній | ✅ |
-| 1 | Забагато глобалів (`POOL`, `DB_CONFIG`, `TRANSPORT`, `METRICS`, `ROLES`, …) | `@dataclass Config`, `class Database`, `class Metrics` + синглтони; зберегти module-alias `query`/`METRICS` | B | середній | ⬜ |
+| 1 | Забагато глобалів (`POOL`, `DB_CONFIG`, `TRANSPORT`, `METRICS`, `ROLES`, …) | `@dataclass Config`, `class Database`, `class Metrics` + синглтони; зберегти module-alias `query`/`METRICS` | B | середній | ✅ |
 | 6 | Повтор SQL (`SELECT … FROM products WHERE …`) | Спільні шматки (колонки, `by_slug`) — вбирається Repository | C | середній | ⬜ |
 | 2 | Повтор `query()` у кожному інструменті | `ProductRepository` / `CategoryRepository` / `FaqRepository` | C | вищий | ⬜ |
 | 5 | Немає кешу | Кешувати **лише** `resource://schema` (реально статична) | D | середній | ⬜ |
@@ -55,7 +55,7 @@
 - **Verify:** `get_product` повертає ті самі ключі/значення; тест
   `test_update_stock_roundtrip` (читає картку) зелений.
 
-### Фаза B — групування глобалів (п.1) · середній ризик
+### ✅ Фаза B — групування глобалів (п.1) · середній ризик
 - `Config` (frozen dataclass з `ADD_*`), `Metrics` (клас навколо лічильників +
   Prometheus), `Database` (пул + `query`/`run_write`) — у відповідних `ad_*`.
 - Синглтони `config`, `metrics`, `db`; **зберегти** `query = db.query`,

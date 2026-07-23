@@ -17,7 +17,7 @@ from fastmcp.server.elicitation import (
 )
 
 from ad_config import ROLES, TRANSPORT, log
-from ad_metrics import METRICS, PROM_WRITES_DENIED
+from ad_metrics import metrics
 
 
 def _role_from_token() -> str | None:
@@ -59,8 +59,7 @@ def _require_role(ctx: Context, minimum: str) -> None:
     """Кидає PermissionError, якщо роль виклику нижча за потрібну."""
     role = _current_role(ctx)
     if ROLES[role] < ROLES[minimum]:
-        METRICS["writes_denied"] += 1
-        PROM_WRITES_DENIED.inc()
+        metrics.record_denied()
         log.warning("access denied: role=%s needs=%s", role, minimum)
         raise PermissionError(
             f"Недостатньо прав: потрібна роль '{minimum}', поточна '{role}'."
