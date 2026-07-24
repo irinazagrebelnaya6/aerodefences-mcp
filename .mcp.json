@@ -7,7 +7,7 @@
         "server_aerodefences.py"
       ],
       "env": {
-        "ADD_ROLE": "viewer"
+        "ADD_ROLE": "admin"
       }
     }
   }
