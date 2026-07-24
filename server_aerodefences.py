@@ -20,6 +20,7 @@ AeroDefences MCP — точка входу (агрегатор).
 """
 
 import os
+import signal
 
 from prometheus_client import start_http_server as prom_start_http_server
 
@@ -38,15 +39,39 @@ from ad_metrics import METRICS
 __all__ = ["mcp", "query", "METRICS"]
 
 
+def _install_shutdown_logging() -> None:
+    """Лог завершення роботи на SIGTERM/SIGINT (`docker stop` / Ctrl-C).
+
+    SIGTERM транслюємо у KeyboardInterrupt, щоб вийти з блокуючого `mcp.run()`
+    тим самим шляхом, що й Ctrl-C. Якщо ми не в головному потоці (тести) —
+    signal.signal кине ValueError; тихо пропускаємо."""
+
+    def _handler(signum, _frame):
+        raise KeyboardInterrupt(f"signal {signum}")
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(sig, _handler)
+        except ValueError:
+            pass
+
+
 if __name__ == "__main__":
+    _install_shutdown_logging()
     # ADD_TRANSPORT=stdio (дефолт, локальний хост) | http (мережевий деплой).
-    if TRANSPORT == "http":
-        host = os.getenv("ADD_HTTP_HOST", "0.0.0.0")
-        port = int(os.getenv("ADD_HTTP_PORT", "8000"))
-        # Prometheus-метрики на окремому порту (/metrics) для скрейпера.
-        metrics_port = int(os.getenv("ADD_METRICS_PORT", "9100"))
-        prom_start_http_server(metrics_port)
-        log.info("starting HTTP transport on %s:%s (metrics on :%s)", host, port, metrics_port)
-        mcp.run(transport="http", host=host, port=port)
-    else:
-        mcp.run()
+    try:
+        if TRANSPORT == "http":
+            host = os.getenv("ADD_HTTP_HOST", "0.0.0.0")
+            port = int(os.getenv("ADD_HTTP_PORT", "8000"))
+            # Prometheus-метрики на окремому порту (/metrics) для скрейпера.
+            metrics_port = int(os.getenv("ADD_METRICS_PORT", "9100"))
+            prom_start_http_server(metrics_port)
+            log.info("starting HTTP transport on %s:%s (metrics on :%s)", host, port, metrics_port)
+            mcp.run(transport="http", host=host, port=port)
+        else:
+            log.info("starting stdio transport")
+            mcp.run()
+    except KeyboardInterrupt:
+        log.info("shutdown requested (interrupt) — stopping AeroDefences MCP")
+    finally:
+        log.info("AeroDefences MCP stopped")

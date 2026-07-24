@@ -1,0 +1,56 @@
+{"ts": "2026-07-24 13:58:46,376", "level": "INFO", "logger": "aerodefences", "msg": "starting HTTP transport on 127.0.0.1:8010 (metrics on :9110)"}
+{"ts": "2026-07-24 13:58:46,544", "level": "INFO", "logger": "httpx", "msg": "HTTP Request: GET https://pypi.org/pypi/fastmcp/json \"HTTP/1.1 200 OK\""}
+
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│                                                                              │
+│                                                                              │
+│                         ▄▀▀ ▄▀█ █▀▀ ▀█▀ █▀▄▀█ █▀▀ █▀█                        │
+│                         █▀  █▀█ ▄▄█  █  █ ▀ █ █▄▄ █▀▀                        │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                FastMCP 3.4.4                                 │
+│                            https://gofastmcp.com                             │
+│                                                                              │
+│              🖥  Server:      AeroDefences Catalog Server, 3.4.4              │
+│              🚀 Deploy free: https://horizon.prefect.io                      │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+
+[07/24/26 13:58:46] INFO     Starting MCP server 'AeroDefences  transport.py:361
+                             Catalog Server' with transport                     
+                             'http' on                                          
+                             http://127.0.0.1:8010/mcp                          
+INFO:     Started server process [1146201]
+INFO:     Waiting for application startup.
+{"ts": "2026-07-24 13:58:46,641", "level": "INFO", "logger": "mcp.server.streamable_http_manager", "msg": "StreamableHTTP session manager started"}
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+INFO:     127.0.0.1:59724 - "POST /mcp HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:59736 - "POST /mcp HTTP/1.1" 401 Unauthorized
+                    INFO     Auth error returned:              middleware.py:175
+                             invalid_token (status=401)                         
+{"ts": "2026-07-24 13:58:46,861", "level": "INFO", "logger": "mcp.server.streamable_http_manager", "msg": "Created new transport with session ID: 9c160e31cf0a41408b889fa406611e53"}
+INFO:     127.0.0.1:59748 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59764 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:59772 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59788 - "POST /mcp HTTP/1.1" 200 OK
+{"ts": "2026-07-24 13:58:46,868", "level": "INFO", "logger": "mcp.server.lowlevel.server", "msg": "Processing request of type CallToolRequest"}
+                    DEBUG    Sending INFO to client: whoami      context.py:1446
+INFO:     127.0.0.1:59796 - "POST /mcp HTTP/1.1" 200 OK
+{"ts": "2026-07-24 13:58:46,876", "level": "INFO", "logger": "mcp.server.lowlevel.server", "msg": "Processing request of type ListToolsRequest"}
+INFO:     127.0.0.1:59798 - "POST /mcp HTTP/1.1" 200 OK
+{"ts": "2026-07-24 13:58:46,881", "level": "INFO", "logger": "mcp.server.lowlevel.server", "msg": "Processing request of type CallToolRequest"}
+INFO:     127.0.0.1:59808 - "POST /mcp HTTP/1.1" 200 OK
+{"ts": "2026-07-24 13:58:46,898", "level": "INFO", "logger": "mcp.server.lowlevel.server", "msg": "Processing request of type CallToolRequest"}
+{"ts": "2026-07-24 13:58:46,904", "level": "INFO", "logger": "mcp.server.streamable_http", "msg": "Terminating session: 9c160e31cf0a41408b889fa406611e53"}
+INFO:     127.0.0.1:59820 - "DELETE /mcp HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+{"ts": "2026-07-24 13:58:47,046", "level": "INFO", "logger": "mcp.server.streamable_http_manager", "msg": "StreamableHTTP session manager shutting down"}
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1146201]
+{"ts": "2026-07-24 13:58:47,049", "level": "INFO", "logger": "aerodefences", "msg": "shutdown requested (interrupt) — stopping AeroDefences MCP"}
+{"ts": "2026-07-24 13:58:47,049", "level": "INFO", "logger": "aerodefences", "msg": "AeroDefences MCP stopped"}
