@@ -43,16 +43,22 @@ class Config:
 
     @classmethod
     def from_env(cls) -> "Config":
+        # Порожній рядок трактуємо як «не задано» (None): дозволяє перекрити
+        # успадкований .env-параметр, передавши ADD_*="" в оточенні процесу.
+        def opt(name: str) -> str | None:
+            v = os.getenv(name)
+            return v if v else None
+
         return cls(
             transport=os.getenv("ADD_TRANSPORT", "stdio"),
             max_limit=int(os.getenv("ADD_MAX_LIMIT", "200")),
             selection_ttl=int(os.getenv("ADD_SELECTION_TTL", "3600")),
             log_level=os.getenv("ADD_LOG_LEVEL", "INFO"),
             log_format=os.getenv("ADD_LOG_FORMAT", "text"),
-            jwt_jwks_uri=os.getenv("ADD_JWT_JWKS_URI"),
-            jwt_public_key=os.getenv("ADD_JWT_PUBLIC_KEY"),
-            jwt_issuer=os.getenv("ADD_JWT_ISSUER"),
-            jwt_audience=os.getenv("ADD_JWT_AUDIENCE"),
+            jwt_jwks_uri=opt("ADD_JWT_JWKS_URI"),
+            jwt_public_key=opt("ADD_JWT_PUBLIC_KEY"),
+            jwt_issuer=opt("ADD_JWT_ISSUER"),
+            jwt_audience=opt("ADD_JWT_AUDIENCE"),
         )
 
 
