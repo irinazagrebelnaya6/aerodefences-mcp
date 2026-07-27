@@ -119,6 +119,11 @@ class Database:
         # щоб він розумів, що раніше прочитані дані застаріли. Робиться в одному
         # місці, тому спрацьовує для ВСІХ write-знарядь, що ходять через run_write.
         if affected:
+            # Event-Driven інвалідація: каталог змінився → скидаємо semantic
+            # cache (інакше він віддавав би застарілі відповіді ask_catalog).
+            # Єдиний барʼєр → покриває всі write-інструменти автоматично.
+            from ad_semcache import invalidate_semcache
+            await invalidate_semcache()
             try:
                 ctx = get_context()
                 await ctx.send_notification(ResourceListChangedNotification())

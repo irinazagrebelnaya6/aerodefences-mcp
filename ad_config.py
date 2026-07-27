@@ -40,6 +40,14 @@ class Config:
     jwt_public_key: str | None
     jwt_issuer: str | None
     jwt_audience: str | None
+    rag_backend: str
+    voyage_api_key: str | None
+    embeddings_url: str | None
+    embed_model: str
+    embed_dim: int
+    semcache: bool
+    semcache_ttl: int
+    semcache_threshold: float
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -59,6 +67,19 @@ class Config:
             jwt_public_key=opt("ADD_JWT_PUBLIC_KEY"),
             jwt_issuer=opt("ADD_JWT_ISSUER"),
             jwt_audience=opt("ADD_JWT_AUDIENCE"),
+            # RAG: бекенд пошуку (див. RAG_EMBEDDINGS_PLAN.md).
+            # tfidf — офлайн-дефолт; voyage — embeddings через Voyage AI API.
+            rag_backend=os.getenv("ADD_RAG_BACKEND", "tfidf"),
+            voyage_api_key=opt("VOYAGE_API_KEY"),
+            # Sidecar: якщо задано — embeddings беруться з окремого контейнера
+            # по HTTP (замість прямого виклику Voyage). Див. sidecar/.
+            embeddings_url=opt("ADD_EMBEDDINGS_URL"),
+            embed_model=os.getenv("ADD_EMBED_MODEL", "voyage-4-lite"),
+            embed_dim=int(os.getenv("ADD_EMBED_DIM", "1024")),
+            # Semantic cache (потрібні ADD_REDIS_URL + voyage-бекенд).
+            semcache=os.getenv("ADD_SEMCACHE", "off").lower() in ("on", "1", "true"),
+            semcache_ttl=int(os.getenv("ADD_SEMCACHE_TTL", "3600")),
+            semcache_threshold=float(os.getenv("ADD_SEMCACHE_THRESHOLD", "0.93")),
         )
 
 

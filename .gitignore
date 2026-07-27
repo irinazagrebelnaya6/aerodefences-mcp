@@ -21,3 +21,6 @@ dist/
 
 # Тимчасові дампи
 db/*.raw.sql
+
+# Кеш ембедінгів RAG (per-replica, не в репо)
+.cache/

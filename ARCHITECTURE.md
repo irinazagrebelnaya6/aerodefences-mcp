@@ -254,17 +254,25 @@ flowchart TB
         elicit["Elicitation<br/>підтвердження перед write"]
         rt["READ-інструменти<br/>list/find/get_product, search_specs…"]
         wt["WRITE-інструменти<br/>update_*, set_compliance, bulk_*"]
-        rag["RAG-retriever<br/>ask_catalog · rag_index.py (TF-IDF)"]
-        mem["Пам'ять сесії<br/>selection-cart (ctx.set_state)"]
+        rag["RAG-retriever<br/>ask_catalog · rag_index.py"]
+        semcache["Semantic Cache<br/>ad_semcache.py (за сенсом запиту)"]
+        tfidf["TF-IDF бекенд<br/>(офлайн-дефолт / fallback)"]
+        mem["Пам'ять сесії<br/>selection-cart"]
         mon["Моніторинг<br/>healthcheck / metrics + логи"]
         res["resource://schema<br/>+ prompt compliance_report"]
     end
 
     db[("MySQL 8.4<br/>aerodefences")]
     files[/"knowledge/*.md<br/>політики, глосарій"/]
+    redis[("Redis<br/>semantic cache + стан сесії")]
+
+    subgraph SIDE["Sidecar-контейнер · sidecar/embeddings_service.py"]
+        emb["Embeddings proxy (HTTP)<br/>клієнт Voyage + дисковий кеш<br/>токенізація/кешування винесені з mcp"]
+    end
+    voyage["Voyage AI API<br/>embeddings (зовнішній LLM-сервіс)"]
 
     subgraph INFRA["Інфраструктура"]
-        docker["Docker + compose<br/>mcp + mysql + db/init.sql"]
+        docker["Docker + compose<br/>mcp + mysql + embeddings(sidecar)"]
         ci["GitHub Actions CI<br/>ruff + pytest"]
     end
 
@@ -274,11 +282,32 @@ flowchart TB
     wt -. "confirm" .-> elicit
     rt --> db
     wt --> db
+
+    %% RAG-конвеєр із двома взаємозамінними бекендами (ADD_RAG_BACKEND)
+    rag -->|"1. перевір кеш"| semcache
+    semcache -->|"вектори/відповіді"| redis
+    rag ==>|"HTTP /embed (sidecar)"| emb
+    rag -. "fallback" .-> tfidf
+    emb -->|"HTTPS"| voyage
+    rag -. "sidecar/API збій → " .-> tfidf
     rag --> db
     rag --> files
+
+    %% Event-Driven: write → інвалідація кешу (єдиний барʼєр run_write)
+    wt == "catalog.updated → flush" ==> semcache
+    mem --> redis
+
     docker -. deploy .-> SRV
     ci -. verifies .-> SRV
 ```
+
+**Побудовані мікросервісні патерни для LLM** (3 з 4; детальніше — `RAG_EMBEDDINGS_PLAN.md` §4):
+- **Sidecar** — окремий контейнер `embeddings` (`sidecar/`, свій Dockerfile) тримає
+  клієнт Voyage + кеш; mcp ходить до нього по HTTP `/embed`. Токенізація/кешування
+  винесені з основного сервера у власний сервіс, що масштабується окремо.
+- **Semantic Cache (Redis)** — `ask_catalog` кешує за *сенсом* запиту, не за текстом;
+- **Event-Driven** — write через єдиний барʼєр `run_write` шле «catalog.updated» → інвалідація кешу.
+- (API Gateway — свідомо *не* впроваджений: одна модель-хост; обґрунтування в плані §4.)
 
 ### 7.1. Джерела даних (три типи)
 
@@ -290,20 +319,64 @@ flowchart TB
 
 ### 7.2. RAG-шар (`rag_index.py`)
 
-Сервер грає роль **retriever'а**: збирає корпус із БД (по продукту: описи +
-specs + faqs) та локальних `knowledge/*.md` (ріже на секції за `##`), будує
-in-memory TF-IDF індекс і на запит `ask_catalog(question, k)` повертає top-k
-фрагментів із `doc_id`, `source`, `score`, `snippet`. Генерацію робить LLM-хост
-**виключно** за цими фрагментами (grounding). Без важких залежностей — чистий
-Python, детермінований, працює офлайн і в CI. Перебудова — `rebuild_rag_index`.
+Сервер грає роль **retriever'а**: `collect_corpus()` збирає корпус із БД (по
+продукту: описи + specs + faqs) та локальних `knowledge/*.md` (ріже на секції
+за `##`), а `ask_catalog(question, k)` повертає top-k фрагментів із `doc_id`,
+`source`, `score`, `snippet`. Генерацію робить LLM-хост **виключно** за цими
+фрагментами (grounding). Перебудова — `rebuild_rag_index`.
+
+**Два взаємозамінні бекенди пошуку** (`ADD_RAG_BACKEND`, див.
+`RAG_EMBEDDINGS_PLAN.md`):
+
+| Бекенд | Що це | Коли |
+|---|---|---|
+| `tfidf` (дефолт) | in-memory TF-IDF + косинус, чистий Python | офлайн, CI без секретів, база для порівняння |
+| `voyage` | семантичні embeddings через Voyage AI (`ad_embeddings.py`) | продакшн: крос-мовний пошук, морфологія |
+
+`RagIndex` — тонкий фасад над обраним бекендом; контракт `ask_catalog`
+незмінний. Якщо `voyage`-build падає (нема ключа / API недоступний) — індекс
+**деградує на TF-IDF** (fail-open на читання, сервер лишається живим).
+Embeddings документів кешуються на диску (`.cache/`, ключ
+`sha256(model|dim|text)`) — повторний build платить лише за змінені товари.
 
 **Двомовність (EN-описи ↔ UA-запити).** Описи товарів у БД — англійською, а
-запити й політики — українською. Щоб товари знаходились за укр-запитами,
-`knowledge/synonyms.md` містить правила `тригери => укр-синоніми`, які
-`_collect_db` **вписує в пошуковий текст документа товару** під час індексації
-(за категорією/термінами). Сам `synonyms.md` — конфіг, у видачу як фрагмент не
-потрапляє. Приклад ефекту: запит «магнітометр компас» тепер піднімає нагору
-товари MagCore/SensCore з БД, а не лише глосарій.
+запити й політики — українською.
+- На `voyage`-бекенді це розв'язується **природно**: багатомовна модель кладе
+  укр-запит і англ-опис у спільний векторний простір.
+- На `tfidf` (де семантики немає) рятує `knowledge/synonyms.md` — правила
+  `тригери => укр-синоніми`, які `_collect_db` вписує в пошуковий текст товару
+  під час індексації. Сам `synonyms.md` — конфіг, у видачу не потрапляє.
+
+Числовий доказ різниці — `docs/verification/eval_rag.py` (hit@1/hit@5 на
+golden set `tests/golden_queries.json`).
+
+#### 7.2.1. Semantic Cache + Event-Driven (мікросервісні патерни для LLM)
+
+Поверх retrieval — **Semantic Cache** (`ad_semcache.py`, Redis): `ask_catalog`
+кешує за **сенсом** запиту, а не за текстом. Вектор запиту (уже порахований
+для пошуку — без зайвого виклику) шукається серед збережених; косинус ≥ поріг
+(`ADD_SEMCACHE_THRESHOLD`, дефолт 0.93) → повертаємо збережений результат, не
+торкаючись індексу. Кеш спільний між репліками (Redis). Вмикається лише з
+`ADD_SEMCACHE=on` + `ADD_REDIS_URL` + `voyage`-бекендом.
+
+Інвалідація — **Event-Driven**: кожна закомічена write-операція в єдиному барʼєрі
+`Database.run_write` шле подію «catalog.updated», яка скидає простір `semcache:*`
+(`invalidate_semcache`). Один чокпоінт → покриває всі write-інструменти, тож
+застаріла відповідь не переживе зміну каталогу. Це той самий барʼєр, що вже
+розсилав клієнтам `ResourceListChangedNotification`.
+
+**Sidecar (`sidecar/`).** Логіка ембедингів винесена з mcp в окремий контейнер
+`embeddings` (власний `sidecar/Dockerfile`, легкий Starlette/uvicorn): він тримає
+клієнт Voyage + дисковий кеш і віддає вектори по HTTP `POST /embed`. У mcp
+`SidecarClient` (той самий інтерфейс `.embed()`, що й прямий `VoyageClient`)
+робить джерело прозорим для `VoyageBackend`. Перемикання — `ADD_EMBEDDINGS_URL`:
+порожньо → прямий виклик Voyage з mcp; заданий → через sidecar. У docker-стеку
+sidecar піднімається профілем `voyage` (`docker compose --profile voyage up`), а
+mcp **не тримає ключ Voyage** — ключ живе лише в sidecar-контейнері.
+
+Отже, з чотирьох патернів лекції **побудовано три** — Sidecar, Semantic Cache і
+Event-Driven; Voyage виступає зовнішнім LLM-сервісом. API Gateway свідомо не
+впроваджений (одна модель-хост) — обґрунтування в `RAG_EMBEDDINGS_PLAN.md` §4.
 
 ### 7.3. Безпека (RBAC + guardrails)
 
