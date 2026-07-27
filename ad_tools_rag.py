@@ -43,7 +43,7 @@ async def ask_catalog(
         await ctx.info("RAG index cold -> building")
         await rag_index.INDEX.build(query)
 
-    results = rag_index.INDEX.search(question, k=k)
+    results = await rag_index.INDEX.search(question, k=k)
     await ctx.info("ask_catalog", extra={"question": question, "hits": len(results)})
     return {
         "question": question,

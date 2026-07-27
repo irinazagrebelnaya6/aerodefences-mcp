@@ -40,6 +40,7 @@ class Config:
     jwt_public_key: str | None
     jwt_issuer: str | None
     jwt_audience: str | None
+    rag_backend: str
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -59,6 +60,9 @@ class Config:
             jwt_public_key=opt("ADD_JWT_PUBLIC_KEY"),
             jwt_issuer=opt("ADD_JWT_ISSUER"),
             jwt_audience=opt("ADD_JWT_AUDIENCE"),
+            # RAG: бекенд пошуку (див. RAG_EMBEDDINGS_PLAN.md).
+            # tfidf — офлайн-дефолт; voyage — embeddings через Voyage AI API.
+            rag_backend=os.getenv("ADD_RAG_BACKEND", "tfidf"),
         )
 
 
