@@ -173,8 +173,11 @@ class VoyageBackend:
         self._vecs = [cache[k] for k in keys]
         self.docs = docs
 
-    async def scores(self, question: str) -> list[tuple[float, _Doc]]:
-        q_vec = await self.embed_query(question)
+    async def scores(
+        self, question: str, query_vec: list[float] | None = None
+    ) -> list[tuple[float, _Doc]]:
+        # semantic cache вже міг порахувати вектор — не ембедимо вдруге
+        q_vec = query_vec if query_vec is not None else await self.embed_query(question)
         return [
             (score, d)
             for d, vec in zip(self.docs, self._vecs)

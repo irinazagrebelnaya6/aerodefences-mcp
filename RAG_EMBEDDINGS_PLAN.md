@@ -1,7 +1,7 @@
 # План: перехід RAG з TF-IDF на повноцінні embeddings
 
 **Гілка:** `feat/rag-embeddings`
-**Статус:** план затверджено, реалізація фазами A → D (+ опційна E — semantic cache).
+**Статус:** реалізовано — фази A → E (усі, включно з semantic cache).
 
 ---
 
@@ -141,6 +141,12 @@ Embeddings знімають усі три проблеми: багатомовн
 сенсу — вектори не переносяться між перебудовами індексу).
 
 Коміт: `feat(rag): semantic cache for ask_catalog via Redis (phase E)`.
+
+**Статус: реалізовано.** `ad_semcache.py` (Redis-backed `SemanticCache`),
+інтеграція в `ask_catalog` (вектор запиту переиспользується — без подвійного
+ембедингу), Event-Driven інвалідація в єдиному write-барʼєрі
+`Database.run_write` (`invalidate_semcache`). Тести — `tests/test_semcache.py`
+з in-memory фейком Redis (без мережі).
 
 ## 5. Що свідомо НЕ робимо (зараз)
 

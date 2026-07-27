@@ -44,6 +44,9 @@ class Config:
     voyage_api_key: str | None
     embed_model: str
     embed_dim: int
+    semcache: bool
+    semcache_ttl: int
+    semcache_threshold: float
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -69,6 +72,10 @@ class Config:
             voyage_api_key=opt("VOYAGE_API_KEY"),
             embed_model=os.getenv("ADD_EMBED_MODEL", "voyage-4-lite"),
             embed_dim=int(os.getenv("ADD_EMBED_DIM", "1024")),
+            # Semantic cache (потрібні ADD_REDIS_URL + voyage-бекенд).
+            semcache=os.getenv("ADD_SEMCACHE", "off").lower() in ("on", "1", "true"),
+            semcache_ttl=int(os.getenv("ADD_SEMCACHE_TTL", "3600")),
+            semcache_threshold=float(os.getenv("ADD_SEMCACHE_THRESHOLD", "0.93")),
         )
 
 

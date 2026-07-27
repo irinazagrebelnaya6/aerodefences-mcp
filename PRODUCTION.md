@@ -83,6 +83,9 @@
 | `VOYAGE_API_KEY` | Ключ Voyage AI (потрібен для `voyage`) | — |
 | `ADD_EMBED_MODEL` | Модель embeddings | `voyage-4-lite` |
 | `ADD_EMBED_DIM` | Розмірність вектора (256/512/1024/2048) | `1024` |
+| `ADD_SEMCACHE` | Semantic cache для `ask_catalog` (`on`/`off`; потрібні Redis + voyage) | `off` |
+| `ADD_SEMCACHE_TTL` | TTL запису кешу (сек) | `3600` |
+| `ADD_SEMCACHE_THRESHOLD` | Поріг косинуса для влучання | `0.93` |
 
 ---
 

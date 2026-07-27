@@ -10,6 +10,7 @@ import rag_index
 from ad_config import mcp
 from ad_db import query
 from ad_security import _require_role
+from ad_semcache import get_semcache
 
 
 @mcp.tool
@@ -43,12 +44,35 @@ async def ask_catalog(
         await ctx.info("RAG index cold -> building")
         await rag_index.INDEX.build(query)
 
-    results = await rag_index.INDEX.search(question, k=k)
+    backend = rag_index.INDEX.backend
+    sc = get_semcache()
+    # Semantic cache працює лише коли бекенд уміє ембедити запит (voyage).
+    can_cache = sc is not None and hasattr(backend, "embed_query")
+
+    query_vec = None
+    if can_cache:
+        query_vec = await backend.embed_query(question)
+        cached = await sc.get(query_vec)
+        if cached is not None:
+            await ctx.info("ask_catalog (semcache hit)",
+                           extra={"question": question, "hits": len(cached)})
+            return _grounded(question, cached, cached=True)
+
+    # промах (або кеш вимкнено): звичайний retrieval; переиспользуємо вектор
+    results = await rag_index.INDEX.search(question, k=k, query_vec=query_vec)
+    if can_cache:
+        await sc.put(question, query_vec, results)
     await ctx.info("ask_catalog", extra={"question": question, "hits": len(results)})
+    return _grounded(question, results, cached=False)
+
+
+def _grounded(question: str, results: list[dict], cached: bool) -> dict:
+    """Спільна відповідь ask_catalog (з кешу чи ні — формат однаковий)."""
     return {
         "question": question,
         "hits": len(results),
         "results": results,
+        "cached": cached,
         "grounding_note": (
             "Відповідай тільки за наведеними фрагментами. Якщо їх бракує — "
             "скажи про це й запропонуй уточнити запит."

@@ -209,7 +209,9 @@ class SearchBackend(Protocol):
     name: str
 
     async def build(self, docs: list[_Doc]) -> None: ...
-    async def scores(self, question: str) -> list[tuple[float, _Doc]]: ...
+    async def scores(
+        self, question: str, query_vec: list[float] | None = None
+    ) -> list[tuple[float, _Doc]]: ...
     def extra_status(self) -> dict: ...
 
 
@@ -253,7 +255,10 @@ class TfidfBackend:
         norm = math.sqrt(sum(w * w for w in vec.values())) or 1.0
         return {t: w / norm for t, w in vec.items()}
 
-    async def scores(self, question: str) -> list[tuple[float, _Doc]]:
+    async def scores(
+        self, question: str, query_vec: list[float] | None = None
+    ) -> list[tuple[float, _Doc]]:
+        # query_vec ігнорується: TF-IDF має власне (розріджене) представлення.
         q_vec = self._vectorize(_tokenize(question))
         if not q_vec:
             return []
@@ -318,10 +323,14 @@ class RagIndex:
         return self.status()
 
     # ---- пошук ----
-    async def search(self, question: str, k: int = 5) -> list[dict]:
+    async def search(
+        self, question: str, k: int = 5, query_vec: list[float] | None = None
+    ) -> list[dict]:
         if not self.ready:
             raise RuntimeError("RAG-індекс не побудовано. Виклич rebuild_rag_index().")
-        scored = await self.backend.scores(question)
+        # query_vec (якщо переданий semantic cache'ем) переиспользуємо, щоб не
+        # ембедити запит удруге.
+        scored = await self.backend.scores(question, query_vec)
         scored.sort(key=lambda x: x[0], reverse=True)
         results = []
         for score, d in scored[:k]:
