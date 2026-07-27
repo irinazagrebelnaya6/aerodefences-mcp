@@ -272,7 +272,7 @@ flowchart TB
     voyage["Voyage AI API<br/>embeddings (зовнішній LLM-сервіс)"]
 
     subgraph INFRA["Інфраструктура"]
-        docker["Docker + compose<br/>mcp + mysql + embeddings(sidecar)"]
+        docker["Docker + compose<br/>mcp + mysql; профіль voyage:<br/>+ embeddings(sidecar) + redis"]
         ci["GitHub Actions CI<br/>ruff + pytest"]
     end
 
@@ -364,6 +364,13 @@ golden set `tests/golden_queries.json`).
 (`invalidate_semcache`). Один чокпоінт → покриває всі write-інструменти, тож
 застаріла відповідь не переживе зміну каталогу. Це той самий барʼєр, що вже
 розсилав клієнтам `ResourceListChangedNotification`.
+
+**Redis — окремий сервіс.** У docker-стеку Redis піднімається як окремий контейнер
+(профіль `voyage`, `redis:7-alpine`, `maxmemory` + LRU, без персистентності — кеш
+має TTL/інвалідацію, стан сесії ефемерний). Одне сховище обслуговує і semantic
+cache (`semcache:*`), і стан сесій (`sel:*`). Без `ADD_REDIS_URL` обидва
+механізми деградують на in-process фолбек, а звернення до кешу — **fail-open**
+(збій Redis → cache miss, а не помилка запиту).
 
 **Sidecar (`sidecar/`).** Логіка ембедингів винесена з mcp в окремий контейнер
 `embeddings` (власний `sidecar/Dockerfile`, легкий Starlette/uvicorn): він тримає

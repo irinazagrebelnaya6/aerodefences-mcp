@@ -50,8 +50,12 @@ services:
       ADD_JWT_JWKS_URI: ${ADD_JWT_JWKS_URI:?set ADD_JWT_JWKS_URI in .env}
       ADD_JWT_ISSUER: ${ADD_JWT_ISSUER:-}
       ADD_JWT_AUDIENCE: ${ADD_JWT_AUDIENCE:-}
-      # Спільний сесійний стан між репліками (необовʼязково локально).
+      # Спільний сесійний стан + semantic cache. Порожньо → in-process фолбек.
+      # Для профілю voyage передають ADD_REDIS_URL=redis://redis:6379/0.
       ADD_REDIS_URL: ${ADD_REDIS_URL:-}
+      ADD_SEMCACHE: ${ADD_SEMCACHE:-off}
+      ADD_SEMCACHE_TTL: ${ADD_SEMCACHE_TTL:-3600}
+      ADD_SEMCACHE_THRESHOLD: ${ADD_SEMCACHE_THRESHOLD:-0.93}
       # RAG: бекенд пошуку. tfidf (дефолт) — офлайн; voyage — семантичні
       # embeddings. У voyage-режимі mcp НЕ тримає ключ Voyage: він ходить у
       # sidecar `embeddings` по HTTP (ADD_EMBEDDINGS_URL). Sidecar-патерн:
@@ -81,6 +85,7 @@ services:
   # по HTTP (http://embeddings:8100). Стартує лише під профілем `voyage`, щоб
   # дефолтний `docker compose up` (tfidf) не вимагав ключа:
   #   ADD_RAG_BACKEND=voyage ADD_EMBEDDINGS_URL=http://embeddings:8100 \
+  #     ADD_REDIS_URL=redis://redis:6379/0 ADD_SEMCACHE=on \
   #     VOYAGE_API_KEY=... docker compose --profile voyage up --build
   embeddings:
     build:
@@ -106,6 +111,28 @@ services:
         limits:
           cpus: "1.0"
           memory: 512M
+
+  # ── Redis: спільне in-memory сховище (semantic cache + стан сесій) ───────
+  # Окремий сервіс поза процесом mcp. Піднімається профілем `voyage` разом із
+  # sidecar (semantic cache має сенс лише з embeddings). Персистентність не
+  # потрібна: кеш має TTL + інвалідацію на write, стан сесії — ефемерний.
+  redis:
+    image: redis:7-alpine
+    profiles: ["voyage"]
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 192M
 
 volumes:
   embeddings_cache:
