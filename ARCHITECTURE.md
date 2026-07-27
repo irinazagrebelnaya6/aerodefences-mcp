@@ -256,7 +256,6 @@ flowchart TB
         wt["WRITE-інструменти<br/>update_*, set_compliance, bulk_*"]
         rag["RAG-retriever<br/>ask_catalog · rag_index.py"]
         semcache["Semantic Cache<br/>ad_semcache.py (за сенсом запиту)"]
-        embed["Embeddings-бекенд<br/>ad_embeddings.py + disk cache"]
         tfidf["TF-IDF бекенд<br/>(офлайн-дефолт / fallback)"]
         mem["Пам'ять сесії<br/>selection-cart"]
         mon["Моніторинг<br/>healthcheck / metrics + логи"]
@@ -266,10 +265,14 @@ flowchart TB
     db[("MySQL 8.4<br/>aerodefences")]
     files[/"knowledge/*.md<br/>політики, глосарій"/]
     redis[("Redis<br/>semantic cache + стан сесії")]
+
+    subgraph SIDE["Sidecar-контейнер · sidecar/embeddings_service.py"]
+        emb["Embeddings proxy (HTTP)<br/>клієнт Voyage + дисковий кеш<br/>токенізація/кешування винесені з mcp"]
+    end
     voyage["Voyage AI API<br/>embeddings (зовнішній LLM-сервіс)"]
 
     subgraph INFRA["Інфраструктура"]
-        docker["Docker + compose<br/>mcp + mysql + db/init.sql"]
+        docker["Docker + compose<br/>mcp + mysql + embeddings(sidecar)"]
         ci["GitHub Actions CI<br/>ruff + pytest"]
     end
 
@@ -283,10 +286,10 @@ flowchart TB
     %% RAG-конвеєр із двома взаємозамінними бекендами (ADD_RAG_BACKEND)
     rag -->|"1. перевір кеш"| semcache
     semcache -->|"вектори/відповіді"| redis
-    rag --> embed
+    rag ==>|"HTTP /embed (sidecar)"| emb
     rag -. "fallback" .-> tfidf
-    embed -->|"HTTPS"| voyage
-    embed -. "збій API → " .-> tfidf
+    emb -->|"HTTPS"| voyage
+    rag -. "sidecar/API збій → " .-> tfidf
     rag --> db
     rag --> files
 
@@ -298,11 +301,13 @@ flowchart TB
     ci -. verifies .-> SRV
 ```
 
-**Побудовані мікросервісні патерни для LLM** (детальніше — `RAG_EMBEDDINGS_PLAN.md` §4):
+**Побудовані мікросервісні патерни для LLM** (3 з 4; детальніше — `RAG_EMBEDDINGS_PLAN.md` §4):
+- **Sidecar** — окремий контейнер `embeddings` (`sidecar/`, свій Dockerfile) тримає
+  клієнт Voyage + кеш; mcp ходить до нього по HTTP `/embed`. Токенізація/кешування
+  винесені з основного сервера у власний сервіс, що масштабується окремо.
 - **Semantic Cache (Redis)** — `ask_catalog` кешує за *сенсом* запиту, не за текстом;
-- **Event-Driven** — write через єдиний барʼєр `run_write` шле «catalog.updated» → інвалідація кешу;
-- **зовнішній LLM-сервіс за тонким клієнтом** — Voyage AI embeddings з fallback на TF-IDF (fail-open).
-- (API Gateway / Sidecar — свідомо *не* впроваджені: одна модель-хост; обґрунтування в плані §4.)
+- **Event-Driven** — write через єдиний барʼєр `run_write` шле «catalog.updated» → інвалідація кешу.
+- (API Gateway — свідомо *не* впроваджений: одна модель-хост; обґрунтування в плані §4.)
 
 ### 7.1. Джерела даних (три типи)
 
@@ -360,10 +365,18 @@ golden set `tests/golden_queries.json`).
 застаріла відповідь не переживе зміну каталогу. Це той самий барʼєр, що вже
 розсилав клієнтам `ResourceListChangedNotification`.
 
-Отже, з чотирьох патернів лекції **побудовано два** — Semantic Cache і
-Event-Driven; плюс Voyage як зовнішній LLM-сервіс за тонким клієнтом. API Gateway
-та Sidecar свідомо не впроваджені (одна модель-хост) — обґрунтування в
-`RAG_EMBEDDINGS_PLAN.md` §4.
+**Sidecar (`sidecar/`).** Логіка ембедингів винесена з mcp в окремий контейнер
+`embeddings` (власний `sidecar/Dockerfile`, легкий Starlette/uvicorn): він тримає
+клієнт Voyage + дисковий кеш і віддає вектори по HTTP `POST /embed`. У mcp
+`SidecarClient` (той самий інтерфейс `.embed()`, що й прямий `VoyageClient`)
+робить джерело прозорим для `VoyageBackend`. Перемикання — `ADD_EMBEDDINGS_URL`:
+порожньо → прямий виклик Voyage з mcp; заданий → через sidecar. У docker-стеку
+sidecar піднімається профілем `voyage` (`docker compose --profile voyage up`), а
+mcp **не тримає ключ Voyage** — ключ живе лише в sidecar-контейнері.
+
+Отже, з чотирьох патернів лекції **побудовано три** — Sidecar, Semantic Cache і
+Event-Driven; Voyage виступає зовнішнім LLM-сервісом. API Gateway свідомо не
+впроваджений (одна модель-хост) — обґрунтування в `RAG_EMBEDDINGS_PLAN.md` §4.
 
 ### 7.3. Безпека (RBAC + guardrails)
 

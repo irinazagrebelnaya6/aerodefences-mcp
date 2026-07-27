@@ -42,6 +42,7 @@ class Config:
     jwt_audience: str | None
     rag_backend: str
     voyage_api_key: str | None
+    embeddings_url: str | None
     embed_model: str
     embed_dim: int
     semcache: bool
@@ -70,6 +71,9 @@ class Config:
             # tfidf — офлайн-дефолт; voyage — embeddings через Voyage AI API.
             rag_backend=os.getenv("ADD_RAG_BACKEND", "tfidf"),
             voyage_api_key=opt("VOYAGE_API_KEY"),
+            # Sidecar: якщо задано — embeddings беруться з окремого контейнера
+            # по HTTP (замість прямого виклику Voyage). Див. sidecar/.
+            embeddings_url=opt("ADD_EMBEDDINGS_URL"),
             embed_model=os.getenv("ADD_EMBED_MODEL", "voyage-4-lite"),
             embed_dim=int(os.getenv("ADD_EMBED_DIM", "1024")),
             # Semantic cache (потрібні ADD_REDIS_URL + voyage-бекенд).

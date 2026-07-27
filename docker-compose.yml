@@ -53,9 +53,11 @@ services:
       # Спільний сесійний стан між репліками (необовʼязково локально).
       ADD_REDIS_URL: ${ADD_REDIS_URL:-}
       # RAG: бекенд пошуку. tfidf (дефолт) — офлайн; voyage — семантичні
-      # embeddings (потрібен VOYAGE_API_KEY; секрет лише через env, не в образі).
+      # embeddings. У voyage-режимі mcp НЕ тримає ключ Voyage: він ходить у
+      # sidecar `embeddings` по HTTP (ADD_EMBEDDINGS_URL). Sidecar-патерн:
+      # логіка токенізації/кешування винесена в окремий контейнер.
       ADD_RAG_BACKEND: ${ADD_RAG_BACKEND:-tfidf}
-      VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
+      ADD_EMBEDDINGS_URL: ${ADD_EMBEDDINGS_URL:-}
       ADD_EMBED_MODEL: ${ADD_EMBED_MODEL:-voyage-4-lite}
       ADD_EMBED_DIM: ${ADD_EMBED_DIM:-1024}
     ports:
@@ -73,3 +75,37 @@ services:
         limits:
           cpus: "1.0"
           memory: 512M
+
+  # ── Sidecar: embeddings/tokenization proxy ──────────────────────────────
+  # Окремий контейнер поруч із mcp; тримає клієнт Voyage + кеш. mcp ходить сюди
+  # по HTTP (http://embeddings:8100). Стартує лише під профілем `voyage`, щоб
+  # дефолтний `docker compose up` (tfidf) не вимагав ключа:
+  #   ADD_RAG_BACKEND=voyage ADD_EMBEDDINGS_URL=http://embeddings:8100 \
+  #     VOYAGE_API_KEY=... docker compose --profile voyage up --build
+  embeddings:
+    build:
+      context: .
+      dockerfile: sidecar/Dockerfile
+    profiles: ["voyage"]
+    environment:
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}   # sidecar тримає ключ; mcp — ні
+      ADD_EMBED_MODEL: ${ADD_EMBED_MODEL:-voyage-4-lite}
+      ADD_EMBED_DIM: ${ADD_EMBED_DIM:-1024}
+    ports:
+      - "127.0.0.1:8100:8100"
+    volumes:
+      - embeddings_cache:/cache
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+volumes:
+  embeddings_cache:

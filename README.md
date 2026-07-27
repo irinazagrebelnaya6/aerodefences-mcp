@@ -6,9 +6,11 @@ MCP-сервіс (FastMCP) над каталогом компонентів дл
 контроль доступу (RBAC), підтвердження небезпечних дій та моніторинг.
 
 RAG-пошук має **два взаємозамінні бекенди** (`ADD_RAG_BACKEND`): TF-IDF
-(офлайн-дефолт) та семантичні **embeddings через Voyage AI**. Поверх нього —
-мікросервісні патерни для LLM: **Semantic Cache** (Redis) і **Event-Driven**
-інвалідація на write. Деталі — [`RAG_EMBEDDINGS_PLAN.md`](RAG_EMBEDDINGS_PLAN.md).
+(офлайн-дефолт) та семантичні **embeddings через Voyage AI**. Побудовано за
+мікросервісною архітектурою для LLM: **Sidecar** (окремий контейнер
+[`sidecar/`](sidecar/) з клієнтом Voyage + кешем, mcp ходить по HTTP),
+**Semantic Cache** (Redis) і **Event-Driven** інвалідація на write. Деталі —
+[`RAG_EMBEDDINGS_PLAN.md`](RAG_EMBEDDINGS_PLAN.md) §4.
 
 <!-- Після створення репо додати справжній URL, і бейдж почне показувати статус CI:
 ![CI](https://github.com/<user>/<repo>/actions/workflows/ci.yml/badge.svg) -->
@@ -53,7 +55,7 @@ READ/WRITE-інструментів, RAG-retriever'а (TF-IDF / Voyage embedding
 |---|---|
 | Логіка LLM + prompting | `PROMPT_BOOK.md`: системний промпт, стратегії маршрутизації, few-shot |
 | Інтеграція з зовнішніми даними | MySQL + **RAG** (`ask_catalog`) над БД і локальними файлами; embeddings через Voyage AI |
-| Мікросервісна архітектура LLM | Semantic Cache (Redis), Event-Driven інвалідація, зовнішній embeddings-сервіс із fallback — `RAG_EMBEDDINGS_PLAN.md` §4 |
+| Мікросервісна архітектура LLM | **Sidecar** (контейнер `embeddings/` — Voyage-клієнт + кеш), **Semantic Cache** (Redis), **Event-Driven** інвалідація — `RAG_EMBEDDINGS_PLAN.md` §4 |
 | Context / Memory / Routing | `ctx` (логи/elicit/progress), стан сесії (selection-cart), маршрутизація за описами |
 | Підключення джерел | БД MySQL · локальні файли `knowledge/*.md` · клієнтські `meta` |
 | Бізнес-сценарій | Q&A + керування каталогом БПЛА |

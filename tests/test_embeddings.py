@@ -11,7 +11,7 @@ import os
 import pytest
 
 import rag_index
-from ad_embeddings import EmbeddingsError, VoyageBackend, VoyageClient
+from ad_embeddings import EmbeddingsError, SidecarClient, VoyageBackend, VoyageClient
 
 
 class FakeVoyageClient:
@@ -96,10 +96,12 @@ async def test_missing_key_raises(monkeypatch):
     from types import SimpleNamespace
     monkeypatch.setattr(
         "ad_embeddings.config",
-        SimpleNamespace(voyage_api_key=None, embed_model="x", embed_dim=8),
+        SimpleNamespace(
+            voyage_api_key=None, embeddings_url=None, embed_model="x", embed_dim=8
+        ),
     )
     with pytest.raises(EmbeddingsError):
-        VoyageBackend()  # без ключа й без клієнта — fail-safe
+        VoyageBackend()  # без ключа, без sidecar, без клієнта — fail-safe
 
 
 async def test_ragindex_falls_back_to_tfidf_on_voyage_failure(monkeypatch):
@@ -123,6 +125,53 @@ async def test_ragindex_falls_back_to_tfidf_on_voyage_failure(monkeypatch):
     st = await idx.build(fake_query)
     assert st["ready"] is True
     assert st["backend"] == "tfidf"  # деградували, а не впали
+
+
+# ── Sidecar-клієнт (мокнутий HTTP, без мережі) ──────────────────────────
+async def test_sidecar_client_posts_and_parses(monkeypatch):
+    """SidecarClient шле POST /embed і повертає vectors — без реальної мережі."""
+    import ad_embeddings
+
+    captured = {}
+
+    class FakeResp:
+        status_code = 200
+        def json(self):
+            return {"vectors": [[0.1, 0.2]], "model": "m", "dim": 2}
+
+    class FakeAsyncClient:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, url, json):
+            captured["url"] = url
+            captured["json"] = json
+            return FakeResp()
+
+    monkeypatch.setattr(ad_embeddings.httpx, "AsyncClient", FakeAsyncClient)
+    client = SidecarClient("http://embeddings:8100", model="m", dim=2)
+    vecs = await client.embed(["привіт"], input_type="query")
+
+    assert vecs == [[0.1, 0.2]]
+    assert captured["url"] == "http://embeddings:8100/embed"
+    assert captured["json"] == {"texts": ["привіт"], "input_type": "query"}
+
+
+async def test_backend_uses_sidecar_when_url_set(monkeypatch, tmp_path):
+    """Коли заданий ADD_EMBEDDINGS_URL — бекенд бере SidecarClient і НЕ
+    використовує локальний дисковий кеш (кеш у sidecar)."""
+    from types import SimpleNamespace
+    monkeypatch.setattr(
+        "ad_embeddings.config",
+        SimpleNamespace(
+            voyage_api_key=None, embeddings_url="http://embeddings:8100",
+            embed_model="m", embed_dim=2,
+        ),
+    )
+    b = VoyageBackend()
+    assert isinstance(b.client, SidecarClient)
+    assert b._local_cache is False
+    assert b.extra_status()["via"] == "sidecar"
 
 
 # ── Опційний інтеграційний тест: реальний Voyage API ────────────────────
