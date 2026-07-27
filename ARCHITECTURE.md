@@ -254,14 +254,19 @@ flowchart TB
         elicit["Elicitation<br/>підтвердження перед write"]
         rt["READ-інструменти<br/>list/find/get_product, search_specs…"]
         wt["WRITE-інструменти<br/>update_*, set_compliance, bulk_*"]
-        rag["RAG-retriever<br/>ask_catalog · rag_index.py (TF-IDF / Voyage)"]
-        mem["Пам'ять сесії<br/>selection-cart (ctx.set_state)"]
+        rag["RAG-retriever<br/>ask_catalog · rag_index.py"]
+        semcache["Semantic Cache<br/>ad_semcache.py (за сенсом запиту)"]
+        embed["Embeddings-бекенд<br/>ad_embeddings.py + disk cache"]
+        tfidf["TF-IDF бекенд<br/>(офлайн-дефолт / fallback)"]
+        mem["Пам'ять сесії<br/>selection-cart"]
         mon["Моніторинг<br/>healthcheck / metrics + логи"]
         res["resource://schema<br/>+ prompt compliance_report"]
     end
 
     db[("MySQL 8.4<br/>aerodefences")]
     files[/"knowledge/*.md<br/>політики, глосарій"/]
+    redis[("Redis<br/>semantic cache + стан сесії")]
+    voyage["Voyage AI API<br/>embeddings (зовнішній LLM-сервіс)"]
 
     subgraph INFRA["Інфраструктура"]
         docker["Docker + compose<br/>mcp + mysql + db/init.sql"]
@@ -274,11 +279,30 @@ flowchart TB
     wt -. "confirm" .-> elicit
     rt --> db
     wt --> db
+
+    %% RAG-конвеєр із двома взаємозамінними бекендами (ADD_RAG_BACKEND)
+    rag -->|"1. перевір кеш"| semcache
+    semcache -->|"вектори/відповіді"| redis
+    rag --> embed
+    rag -. "fallback" .-> tfidf
+    embed -->|"HTTPS"| voyage
+    embed -. "збій API → " .-> tfidf
     rag --> db
     rag --> files
+
+    %% Event-Driven: write → інвалідація кешу (єдиний барʼєр run_write)
+    wt == "catalog.updated → flush" ==> semcache
+    mem --> redis
+
     docker -. deploy .-> SRV
     ci -. verifies .-> SRV
 ```
+
+**Побудовані мікросервісні патерни для LLM** (детальніше — `RAG_EMBEDDINGS_PLAN.md` §4):
+- **Semantic Cache (Redis)** — `ask_catalog` кешує за *сенсом* запиту, не за текстом;
+- **Event-Driven** — write через єдиний барʼєр `run_write` шле «catalog.updated» → інвалідація кешу;
+- **зовнішній LLM-сервіс за тонким клієнтом** — Voyage AI embeddings з fallback на TF-IDF (fail-open).
+- (API Gateway / Sidecar — свідомо *не* впроваджені: одна модель-хост; обґрунтування в плані §4.)
 
 ### 7.1. Джерела даних (три типи)
 
@@ -320,6 +344,26 @@ Embeddings документів кешуються на диску (`.cache/`, �
 
 Числовий доказ різниці — `docs/verification/eval_rag.py` (hit@1/hit@5 на
 golden set `tests/golden_queries.json`).
+
+#### 7.2.1. Semantic Cache + Event-Driven (мікросервісні патерни для LLM)
+
+Поверх retrieval — **Semantic Cache** (`ad_semcache.py`, Redis): `ask_catalog`
+кешує за **сенсом** запиту, а не за текстом. Вектор запиту (уже порахований
+для пошуку — без зайвого виклику) шукається серед збережених; косинус ≥ поріг
+(`ADD_SEMCACHE_THRESHOLD`, дефолт 0.93) → повертаємо збережений результат, не
+торкаючись індексу. Кеш спільний між репліками (Redis). Вмикається лише з
+`ADD_SEMCACHE=on` + `ADD_REDIS_URL` + `voyage`-бекендом.
+
+Інвалідація — **Event-Driven**: кожна закомічена write-операція в єдиному барʼєрі
+`Database.run_write` шле подію «catalog.updated», яка скидає простір `semcache:*`
+(`invalidate_semcache`). Один чокпоінт → покриває всі write-інструменти, тож
+застаріла відповідь не переживе зміну каталогу. Це той самий барʼєр, що вже
+розсилав клієнтам `ResourceListChangedNotification`.
+
+Отже, з чотирьох патернів лекції **побудовано два** — Semantic Cache і
+Event-Driven; плюс Voyage як зовнішній LLM-сервіс за тонким клієнтом. API Gateway
+та Sidecar свідомо не впроваджені (одна модель-хост) — обґрунтування в
+`RAG_EMBEDDINGS_PLAN.md` §4.
 
 ### 7.3. Безпека (RBAC + guardrails)
 

@@ -40,7 +40,7 @@
           <mxGeometry x="410" y="410" width="230" height="70" as="geometry" />
         </mxCell>
 
-        <mxCell id="rag" value="RAG-retriever&#10;ask_catalog / rebuild_rag_index&#10;(TF-IDF, rag_index.py)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+        <mxCell id="rag" value="RAG-retriever&#10;ask_catalog / rebuild_rag_index&#10;бекенд: TF-IDF / Voyage embeddings&#10;+ Semantic Cache (Redis), Event-Driven" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
           <mxGeometry x="670" y="410" width="230" height="70" as="geometry" />
         </mxCell>
 

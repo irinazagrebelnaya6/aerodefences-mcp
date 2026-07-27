@@ -26,6 +26,11 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+# Читаємо .env так само, як сервер — щоб VOYAGE_API_KEY підхопився без export.
+from dotenv import load_dotenv  # noqa: E402
+
+load_dotenv(ROOT / ".env")
+
 GOLDEN = ROOT / "tests" / "golden_queries.json"
 
 

@@ -5,6 +5,11 @@ MCP-сервіс (FastMCP) над каталогом компонентів дл
 інструменти читання/зміни каталогу, RAG-пошук по даних і локальних політиках,
 контроль доступу (RBAC), підтвердження небезпечних дій та моніторинг.
 
+RAG-пошук має **два взаємозамінні бекенди** (`ADD_RAG_BACKEND`): TF-IDF
+(офлайн-дефолт) та семантичні **embeddings через Voyage AI**. Поверх нього —
+мікросервісні патерни для LLM: **Semantic Cache** (Redis) і **Event-Driven**
+інвалідація на write. Деталі — [`RAG_EMBEDDINGS_PLAN.md`](RAG_EMBEDDINGS_PLAN.md).
+
 <!-- Після створення репо додати справжній URL, і бейдж почне показувати статус CI:
 ![CI](https://github.com/<user>/<repo>/actions/workflows/ci.yml/badge.svg) -->
 
@@ -21,7 +26,7 @@ MCP-сервіс (FastMCP) над каталогом компонентів дл
 |---|---|
 | **Код MCP-сервера** | [`server_aerodefences.py`](server_aerodefences.py), [`rag_index.py`](rag_index.py), [`ad_embeddings.py`](ad_embeddings.py) |
 | **Технічна документація** | цей `README.md` + [`ARCHITECTURE.md`](ARCHITECTURE.md) |
-| **Архітектурна схема** | [`docs/architecture.png`](docs/architecture.png) · редагована [`architecture.drawio`](architecture.drawio) · Mermaid у [ARCHITECTURE.md §6](ARCHITECTURE.md) |
+| **Архітектурна схема** | **актуальна** — Mermaid у [ARCHITECTURE.md §6](ARCHITECTURE.md) (рендериться на GitHub) · редагована [`architecture.drawio`](architecture.drawio) |
 | **Prompt Book** | [`PROMPT_BOOK.md`](PROMPT_BOOK.md) — системні промпти + guardrails |
 | **Демонстрація** | [`DEMO.md`](DEMO.md) — сценарій + `🎥 <ВСТАВ_ПОСИЛАННЯ_НА_ВІДЕО>` |
 | **Тести / CI** | [`tests/`](tests/), [`.github/workflows/ci.yml`](.github/workflows/ci.yml) |
@@ -30,15 +35,15 @@ MCP-сервіс (FastMCP) над каталогом компонентів дл
 
 ## 🏗 Архітектура (огляд)
 
-![Архітектура AeroDefences MCP](docs/architecture.png)
+> **Актуальна схема — Mermaid у [ARCHITECTURE.md §6](ARCHITECTURE.md)** (рендериться
+> прямо на GitHub і містить оновлений стек: embeddings-бекенд, Semantic Cache,
+> Event-Driven). Редагована версія — [`architecture.drawio`](architecture.drawio).
 
 Агент (LLM-хост) звертається до MCP-сервера, який маршрутизує запити до
-READ/WRITE-інструментів, RAG-retriever'а та памʼяті сесії; write-и проходять
-барʼєр RBAC + підтвердження. Джерела — MySQL і локальні файли `knowledge/*.md`.
-Розгортання — Docker/compose, перевірка — GitHub Actions CI.
-
-Детально — [`ARCHITECTURE.md`](ARCHITECTURE.md); редагована схема —
-[`architecture.drawio`](architecture.drawio).
+READ/WRITE-інструментів, RAG-retriever'а (TF-IDF / Voyage embeddings) та памʼяті
+сесії; write-и проходять барʼєр RBAC + підтвердження і скидають Semantic Cache.
+Джерела — MySQL і локальні файли `knowledge/*.md`. Розгортання — Docker/compose,
+перевірка — GitHub Actions CI.
 
 ---
 
@@ -47,7 +52,8 @@ READ/WRITE-інструментів, RAG-retriever'а та памʼяті сес
 | Вимога (етап) | Реалізація |
 |---|---|
 | Логіка LLM + prompting | `PROMPT_BOOK.md`: системний промпт, стратегії маршрутизації, few-shot |
-| Інтеграція з зовнішніми даними | MySQL + **RAG** (`ask_catalog`) над БД і локальними файлами |
+| Інтеграція з зовнішніми даними | MySQL + **RAG** (`ask_catalog`) над БД і локальними файлами; embeddings через Voyage AI |
+| Мікросервісна архітектура LLM | Semantic Cache (Redis), Event-Driven інвалідація, зовнішній embeddings-сервіс із fallback — `RAG_EMBEDDINGS_PLAN.md` §4 |
 | Context / Memory / Routing | `ctx` (логи/elicit/progress), стан сесії (selection-cart), маршрутизація за описами |
 | Підключення джерел | БД MySQL · локальні файли `knowledge/*.md` · клієнтські `meta` |
 | Бізнес-сценарій | Q&A + керування каталогом БПЛА |
@@ -66,7 +72,7 @@ READ/WRITE-інструментів, RAG-retriever'а та памʼяті сес
 `update_stock`, `set_compliance` (admin), `update_product_field` (білий список),
 `add_spec`, `add_faq`, `reorder_product`, `bulk_set_status` (admin).
 
-**RAG:** `ask_catalog`, `rebuild_rag_index`.
+**RAG:** `ask_catalog`, `rebuild_rag_index` (бекенд TF-IDF / Voyage embeddings + semantic cache).
 **Стан/пам'ять:** `select_products`, `add_to_selection`, `get_selection`,
 `clear_selection`, `apply_status_to_selection` (admin).
 **Контекст/моніторинг:** `whoami`, `catalog_report`, `healthcheck`, `metrics`.
