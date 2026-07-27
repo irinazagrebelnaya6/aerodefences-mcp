@@ -52,6 +52,12 @@ services:
       ADD_JWT_AUDIENCE: ${ADD_JWT_AUDIENCE:-}
       # Спільний сесійний стан між репліками (необовʼязково локально).
       ADD_REDIS_URL: ${ADD_REDIS_URL:-}
+      # RAG: бекенд пошуку. tfidf (дефолт) — офлайн; voyage — семантичні
+      # embeddings (потрібен VOYAGE_API_KEY; секрет лише через env, не в образі).
+      ADD_RAG_BACKEND: ${ADD_RAG_BACKEND:-tfidf}
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
+      ADD_EMBED_MODEL: ${ADD_EMBED_MODEL:-voyage-4-lite}
+      ADD_EMBED_DIM: ${ADD_EMBED_DIM:-1024}
     ports:
       - "127.0.0.1:8000:8000"
       - "127.0.0.1:9100:9100"

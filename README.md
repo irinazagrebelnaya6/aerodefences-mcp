@@ -19,7 +19,7 @@ MCP-сервіс (FastMCP) над каталогом компонентів дл
 
 | Артефакт | Де |
 |---|---|
-| **Код MCP-сервера** | [`server_aerodefences.py`](server_aerodefences.py), [`rag_index.py`](rag_index.py) |
+| **Код MCP-сервера** | [`server_aerodefences.py`](server_aerodefences.py), [`rag_index.py`](rag_index.py), [`ad_embeddings.py`](ad_embeddings.py) |
 | **Технічна документація** | цей `README.md` + [`ARCHITECTURE.md`](ARCHITECTURE.md) |
 | **Архітектурна схема** | [`docs/architecture.png`](docs/architecture.png) · редагована [`architecture.drawio`](architecture.drawio) · Mermaid у [ARCHITECTURE.md §6](ARCHITECTURE.md) |
 | **Prompt Book** | [`PROMPT_BOOK.md`](PROMPT_BOOK.md) — системні промпти + guardrails |
@@ -140,7 +140,8 @@ server_aerodefences.py   # точка входу-агрегатор (реєст�
 ad_config.py ad_db.py ad_security.py ad_metrics.py      # інфраструктура (config / БД / RBAC / метрики)
 ad_resources.py ad_prompts.py                           # ресурс schema / prompt compliance_report
 ad_tools_read.py ad_tools_write.py ad_tools_rag.py      # інструменти (read+моніторинг / write+кошик / RAG)
-rag_index.py             # RAG-retriever (TF-IDF над БД + knowledge/)
+rag_index.py             # RAG-retriever (TF-IDF/Voyage над БД + knowledge/)
+ad_embeddings.py         # Voyage AI embeddings-клієнт + семантичний бекенд
 knowledge/*.md           # локальне джерело знань для RAG (політики, глосарій)
 client_aerodefences.py   # harness-клієнт (тест без LLM)
 repl_aerodefences.py     # інтерактивний REPL

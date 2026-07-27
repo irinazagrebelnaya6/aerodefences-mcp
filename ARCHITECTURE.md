@@ -254,7 +254,7 @@ flowchart TB
         elicit["Elicitation<br/>підтвердження перед write"]
         rt["READ-інструменти<br/>list/find/get_product, search_specs…"]
         wt["WRITE-інструменти<br/>update_*, set_compliance, bulk_*"]
-        rag["RAG-retriever<br/>ask_catalog · rag_index.py (TF-IDF)"]
+        rag["RAG-retriever<br/>ask_catalog · rag_index.py (TF-IDF / Voyage)"]
         mem["Пам'ять сесії<br/>selection-cart (ctx.set_state)"]
         mon["Моніторинг<br/>healthcheck / metrics + логи"]
         res["resource://schema<br/>+ prompt compliance_report"]
@@ -290,20 +290,36 @@ flowchart TB
 
 ### 7.2. RAG-шар (`rag_index.py`)
 
-Сервер грає роль **retriever'а**: збирає корпус із БД (по продукту: описи +
-specs + faqs) та локальних `knowledge/*.md` (ріже на секції за `##`), будує
-in-memory TF-IDF індекс і на запит `ask_catalog(question, k)` повертає top-k
-фрагментів із `doc_id`, `source`, `score`, `snippet`. Генерацію робить LLM-хост
-**виключно** за цими фрагментами (grounding). Без важких залежностей — чистий
-Python, детермінований, працює офлайн і в CI. Перебудова — `rebuild_rag_index`.
+Сервер грає роль **retriever'а**: `collect_corpus()` збирає корпус із БД (по
+продукту: описи + specs + faqs) та локальних `knowledge/*.md` (ріже на секції
+за `##`), а `ask_catalog(question, k)` повертає top-k фрагментів із `doc_id`,
+`source`, `score`, `snippet`. Генерацію робить LLM-хост **виключно** за цими
+фрагментами (grounding). Перебудова — `rebuild_rag_index`.
+
+**Два взаємозамінні бекенди пошуку** (`ADD_RAG_BACKEND`, див.
+`RAG_EMBEDDINGS_PLAN.md`):
+
+| Бекенд | Що це | Коли |
+|---|---|---|
+| `tfidf` (дефолт) | in-memory TF-IDF + косинус, чистий Python | офлайн, CI без секретів, база для порівняння |
+| `voyage` | семантичні embeddings через Voyage AI (`ad_embeddings.py`) | продакшн: крос-мовний пошук, морфологія |
+
+`RagIndex` — тонкий фасад над обраним бекендом; контракт `ask_catalog`
+незмінний. Якщо `voyage`-build падає (нема ключа / API недоступний) — індекс
+**деградує на TF-IDF** (fail-open на читання, сервер лишається живим).
+Embeddings документів кешуються на диску (`.cache/`, ключ
+`sha256(model|dim|text)`) — повторний build платить лише за змінені товари.
 
 **Двомовність (EN-описи ↔ UA-запити).** Описи товарів у БД — англійською, а
-запити й політики — українською. Щоб товари знаходились за укр-запитами,
-`knowledge/synonyms.md` містить правила `тригери => укр-синоніми`, які
-`_collect_db` **вписує в пошуковий текст документа товару** під час індексації
-(за категорією/термінами). Сам `synonyms.md` — конфіг, у видачу як фрагмент не
-потрапляє. Приклад ефекту: запит «магнітометр компас» тепер піднімає нагору
-товари MagCore/SensCore з БД, а не лише глосарій.
+запити й політики — українською.
+- На `voyage`-бекенді це розв'язується **природно**: багатомовна модель кладе
+  укр-запит і англ-опис у спільний векторний простір.
+- На `tfidf` (де семантики немає) рятує `knowledge/synonyms.md` — правила
+  `тригери => укр-синоніми`, які `_collect_db` вписує в пошуковий текст товару
+  під час індексації. Сам `synonyms.md` — конфіг, у видачу не потрапляє.
+
+Числовий доказ різниці — `docs/verification/eval_rag.py` (hit@1/hit@5 на
+golden set `tests/golden_queries.json`).
 
 ### 7.3. Безпека (RBAC + guardrails)
 

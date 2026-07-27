@@ -6,10 +6,12 @@ Voyage-клієнт мокаємо детерміновано (фейкові в
 а RagIndex деградує на TF-IDF, коли Voyage падає.
 """
 
+import os
+
 import pytest
 
 import rag_index
-from ad_embeddings import EmbeddingsError, VoyageBackend
+from ad_embeddings import EmbeddingsError, VoyageBackend, VoyageClient
 
 
 class FakeVoyageClient:
@@ -121,3 +123,26 @@ async def test_ragindex_falls_back_to_tfidf_on_voyage_failure(monkeypatch):
     st = await idx.build(fake_query)
     assert st["ready"] is True
     assert st["backend"] == "tfidf"  # деградували, а не впали
+
+
+# ── Опційний інтеграційний тест: реальний Voyage API ────────────────────
+@pytest.mark.skipif(
+    not os.getenv("VOYAGE_API_KEY"),
+    reason="live Voyage test needs VOYAGE_API_KEY",
+)
+async def test_voyage_live_smoke(tmp_path, monkeypatch):
+    """Живий виклик: два семантично близькі укр-запити мають дати
+    вищий косинус, ніж далекий. Пропускається без ключа."""
+    monkeypatch.setattr("ad_embeddings.CACHE_FILE", tmp_path / "emb.json")
+    from ad_config import config
+    from ad_embeddings import _dot
+    client = VoyageClient(
+        api_key=config.voyage_api_key,
+        model=config.embed_model,
+        dim=config.embed_dim,
+    )
+    vecs = await client.embed(
+        ["тепловізійна камера", "камера з тепловізором", "модуль живлення"],
+        input_type="query",
+    )
+    assert _dot(vecs[0], vecs[1]) > _dot(vecs[0], vecs[2])

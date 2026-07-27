@@ -1,0 +1,13 @@
+{
+  "_comment": "Golden set для оцінки RAG: українські запити → очікуваний doc_id продукту. Включає 'важкі' крос-мовні кейси, де опис англійською, а запит українською. Використовується docs/verification/eval_rag.py (hit@1 / hit@5) та як орієнтир для порогу semantic cache.",
+  "queries": [
+    {"q": "що працює по CAN шині", "expect": "db:product:fieldsense-can", "note": "CAN у назві та описі"},
+    {"q": "тепловізійна камера для нічної зйомки", "expect": "db:product:ThermIX", "note": "крос-мовний: опис 'thermal imaging' англ."},
+    {"q": "модуль керування польотом", "expect": "db:product:skymodule-x1", "note": "flight controller"},
+    {"q": "обчислювальний модуль зі штучним інтелектом", "expect": "db:product:computenode-z", "note": "AI edge compute, крос-мовний"},
+    {"q": "супутникова навігація GNSS з двома антенами", "expect": "db:product:geonav-dual", "note": "dual GNSS"},
+    {"q": "живлення для сервоприводів", "expect": "db:product:servonode-x4", "note": "servo power"},
+    {"q": "модуль розподілу живлення на 16 комірок", "expect": "db:product:can-pmu-16s", "note": "power management unit 16S"},
+    {"q": "оптична камера високої роздільної здатності", "expect": "db:product:Optix-d", "note": "крос-мовний: 'optical camera'"}
+  ]
+}
