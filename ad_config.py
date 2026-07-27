@@ -41,6 +41,9 @@ class Config:
     jwt_issuer: str | None
     jwt_audience: str | None
     rag_backend: str
+    voyage_api_key: str | None
+    embed_model: str
+    embed_dim: int
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -63,6 +66,9 @@ class Config:
             # RAG: бекенд пошуку (див. RAG_EMBEDDINGS_PLAN.md).
             # tfidf — офлайн-дефолт; voyage — embeddings через Voyage AI API.
             rag_backend=os.getenv("ADD_RAG_BACKEND", "tfidf"),
+            voyage_api_key=opt("VOYAGE_API_KEY"),
+            embed_model=os.getenv("ADD_EMBED_MODEL", "voyage-4-lite"),
+            embed_dim=int(os.getenv("ADD_EMBED_DIM", "1024")),
         )
 
 
