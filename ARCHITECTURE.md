@@ -270,6 +270,8 @@ flowchart TB
         wt["WRITE-інструменти<br/>update_*, set_compliance, bulk_*"]
         rag["RAG-retriever<br/>ask_catalog · rag_index.py"]
         semcache["Semantic Cache<br/>ad_semcache.py (за сенсом запиту)"]
+        gw["API Gateway (embeddings)<br/>ad_gateway.py · роутинг+фолбек"]
+        summ["In-memory summarization<br/>ad_summarize.py · стискання top-k"]
         tfidf["TF-IDF бекенд<br/>(офлайн-дефолт / fallback)"]
         mem["Пам'ять сесії<br/>selection-cart"]
         mon["Моніторинг<br/>healthcheck / metrics + логи"]
@@ -285,6 +287,7 @@ flowchart TB
         emb["Embeddings proxy (HTTP)<br/>клієнт Voyage + дисковий кеш<br/>токенізація/кешування винесені з mcp"]
     end
     voyage["Voyage AI API<br/>embeddings (зовнішній LLM-сервіс)"]
+    local["local embed<br/>офлайн-провайдер (фолбек gateway)"]
 
     subgraph INFRA["Інфраструктура"]
         docker["Docker + compose<br/>mcp + mysql; профіль voyage:<br/>+ embeddings(sidecar) + redis + qdrant"]
@@ -298,13 +301,17 @@ flowchart TB
     rt --> db
     wt --> db
 
-    %% RAG-конвеєр із трьома взаємозамінними бекендами (ADD_RAG_BACKEND)
+    %% RAG-конвеєр: кеш → embeddings через gateway → пошук → стискання
+    %% (бекенд ADD_RAG_BACKEND: tfidf | voyage | qdrant; gateway/summ — опційні)
     rag -->|"1. перевір кеш"| semcache
     semcache -->|"вектори/відповіді"| redis
-    rag ==>|"HTTP /embed (sidecar)"| emb
-    rag -->|"ANN-пошук (backend=qdrant)"| qdrant
-    rag -. "fallback" .-> tfidf
+    rag -->|"2. embeddings"| gw
+    gw ==>|"primary: HTTP /embed"| emb
+    gw -. "fallback" .-> local
     emb -->|"HTTPS"| voyage
+    rag -->|"3. ANN-пошук (backend=qdrant)"| qdrant
+    rag -->|"4. стиснути top-k"| summ
+    rag -. "fallback" .-> tfidf
     rag -. "sidecar/API/qdrant збій → " .-> tfidf
     rag --> db
     rag --> files
