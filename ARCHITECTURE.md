@@ -97,6 +97,9 @@
 | **`ad_embeddings.py`** | Семантичний бекенд: `VoyageBackend` + `SidecarClient` (прямий Voyage або sidecar по HTTP) | ← `rag_index` |
 | **`voyage_client.py`** | Легкий клієнт Voyage AI + утиліти кешу (httpx+stdlib, без fastmcp) | ← `ad_embeddings`, sidecar |
 | **`ad_semcache.py`** | Semantic Cache (Redis): пошук за сенсом запиту + інвалідація | ← `ask_catalog`, `run_write` |
+| **`ad_qdrant.py`** | Vector-DB бекенд: ANN-пошук у Qdrant по REST (без пакета qdrant-client) | ← `rag_index`, → Qdrant |
+| **`ad_summarize.py`** | In-memory summarization: екстрактивне стискання top-k фрагментів + LRU-кеш | ← `ask_catalog` |
+| **`ad_gateway.py`** | API Gateway для embeddings: маршрутизація до провайдерів (Voyage/local) з фолбеком | ← `make_embeddings_client` |
 | **`sidecar/`** | Контейнер embeddings-proxy (свій Dockerfile): клієнт Voyage + кеш по HTTP | ← mcp (HTTP) |
 | **`client_aerodefences.py`** | Harness — сценарний тест-клієнт замість LLM; ганяє всі інструменти по черзі й друкує результат | піднімає сервер підпроцесом |
 | **`repl_aerodefences.py`** | Інтерактивний REPL — команди `call <tool> {json}` набираються вручну | піднімає сервер підпроцесом |
@@ -267,6 +270,8 @@ flowchart TB
         wt["WRITE-інструменти<br/>update_*, set_compliance, bulk_*"]
         rag["RAG-retriever<br/>ask_catalog · rag_index.py"]
         semcache["Semantic Cache<br/>ad_semcache.py (за сенсом запиту)"]
+        gw["API Gateway (embeddings)<br/>ad_gateway.py · роутинг+фолбек"]
+        summ["In-memory summarization<br/>ad_summarize.py · стискання top-k"]
         tfidf["TF-IDF бекенд<br/>(офлайн-дефолт / fallback)"]
         mem["Пам'ять сесії<br/>selection-cart"]
         mon["Моніторинг<br/>healthcheck / metrics + логи"]
@@ -276,14 +281,16 @@ flowchart TB
     db[("MySQL 8.4<br/>aerodefences")]
     files[/"knowledge/*.md<br/>політики, глосарій"/]
     redis[("Redis<br/>semantic cache + стан сесії")]
+    qdrant[("Qdrant<br/>vector DB · ANN (backend=qdrant)")]
 
     subgraph SIDE["Sidecar-контейнер · sidecar/embeddings_service.py"]
         emb["Embeddings proxy (HTTP)<br/>клієнт Voyage + дисковий кеш<br/>токенізація/кешування винесені з mcp"]
     end
     voyage["Voyage AI API<br/>embeddings (зовнішній LLM-сервіс)"]
+    local["local embed<br/>офлайн-провайдер (фолбек gateway)"]
 
     subgraph INFRA["Інфраструктура"]
-        docker["Docker + compose<br/>mcp + mysql; профіль voyage:<br/>+ embeddings(sidecar) + redis"]
+        docker["Docker + compose<br/>mcp + mysql; профіль voyage:<br/>+ embeddings(sidecar) + redis + qdrant"]
         ci["GitHub Actions CI<br/>ruff + pytest"]
     end
 
@@ -294,13 +301,18 @@ flowchart TB
     rt --> db
     wt --> db
 
-    %% RAG-конвеєр із двома взаємозамінними бекендами (ADD_RAG_BACKEND)
+    %% RAG-конвеєр: кеш → embeddings через gateway → пошук → стискання
+    %% (бекенд ADD_RAG_BACKEND: tfidf | voyage | qdrant; gateway/summ — опційні)
     rag -->|"1. перевір кеш"| semcache
     semcache -->|"вектори/відповіді"| redis
-    rag ==>|"HTTP /embed (sidecar)"| emb
-    rag -. "fallback" .-> tfidf
+    rag -->|"2. embeddings"| gw
+    gw ==>|"primary: HTTP /embed"| emb
+    gw -. "fallback" .-> local
     emb -->|"HTTPS"| voyage
-    rag -. "sidecar/API збій → " .-> tfidf
+    rag -->|"3. ANN-пошук (backend=qdrant)"| qdrant
+    rag -->|"4. стиснути top-k"| summ
+    rag -. "fallback" .-> tfidf
+    rag -. "sidecar/API/qdrant збій → " .-> tfidf
     rag --> db
     rag --> files
 
@@ -336,13 +348,14 @@ flowchart TB
 `source`, `score`, `snippet`. Генерацію робить LLM-хост **виключно** за цими
 фрагментами (grounding). Перебудова — `rebuild_rag_index`.
 
-**Два взаємозамінні бекенди пошуку** (`ADD_RAG_BACKEND`, див.
+**Три взаємозамінні бекенди пошуку** (`ADD_RAG_BACKEND`, див.
 `RAG_EMBEDDINGS_PLAN.md`):
 
 | Бекенд | Що це | Коли |
 |---|---|---|
 | `tfidf` (дефолт) | in-memory TF-IDF + косинус, чистий Python | офлайн, CI без секретів, база для порівняння |
-| `voyage` | семантичні embeddings через Voyage AI (`ad_embeddings.py`) | продакшн: крос-мовний пошук, морфологія |
+| `voyage` | семантичні embeddings через Voyage AI (`ad_embeddings.py`), косинус у памʼяті | крос-мовний пошук, морфологія; малий/середній корпус |
+| `qdrant` | embeddings + ANN-пошук у **vector-DB** Qdrant (`ad_qdrant.py`, окремий контейнер) | справжня vector-DB: великий корпус, retrieval винесено у спеціалізоване сховище |
 
 `RagIndex` — тонкий фасад над обраним бекендом; контракт `ask_catalog`
 незмінний. Якщо `voyage`-build падає (нема ключа / API недоступний) — індекс
@@ -392,9 +405,29 @@ cache (`semcache:*`), і стан сесій (`sel:*`). Без `ADD_REDIS_URL` �
 sidecar піднімається профілем `voyage` (`docker compose --profile voyage up`), а
 mcp **не тримає ключ Voyage** — ключ живе лише в sidecar-контейнері.
 
-Отже, з чотирьох патернів лекції **побудовано три** — Sidecar, Semantic Cache і
-Event-Driven; Voyage виступає зовнішнім LLM-сервісом. API Gateway свідомо не
-впроваджений (одна модель-хост) — обґрунтування в `RAG_EMBEDDINGS_PLAN.md` §4.
+**API Gateway (`ad_gateway.py`, `ADD_EMBED_GATEWAY=on`).** Патерн застосовано до
+embeddings-підсистеми: єдиний вхід `.embed()` маршрутизує до провайдерів із
+фолбеком — основний Voyage (прямий/sidecar) + резервний `LocalEmbedProvider`
+(офлайн детермінований, без ключа). Це аналог gateway, що обирає між моделями
+(GPT/Claude/Llama), лише для embeddings. Gateway **фіксується** на провайдері,
+який обслужив build корпусу, і використовує лише його для запитів (щоб вектори
+були в одному просторі). Новий провайдер (OpenAI, локальна модель) додається
+реєстрацією у `build_gateway`.
+
+Отже, всі **чотири патерни лекції мають робочу реалізацію** — API Gateway,
+Sidecar, Semantic Cache, Event-Driven (деталі й межі — `RAG_EMBEDDINGS_PLAN.md` §4).
+Повний контур LLM-мікросервісів доповнюють vector-DB (Qdrant) та in-memory
+summarization.
+
+#### 7.2.2. In-memory summarization
+
+Опційний шар стискання контексту (`ad_summarize.py`, `ADD_SUMMARIZE=on`): після
+retrieval кожен top-k сніпет **екстрактивно** скорочується до найрелевантніших
+до запиту речень у межах `ADD_SUMMARIZE_MAX_CHARS`, щоб LLM-хост отримував менше
+токенів. Без виклику LLM (сервер лишається retriever'ом); результати кешуються
+в памʼяті процесу (LRU). Стискання застосовується **до** запису в semantic cache,
+тож кеш зберігає вже стиснену відповідь. Для нашого каталогу виграш малий — це
+задел під великий корпус/довгі документи.
 
 ### 7.3. Безпека (RBAC + guardrails)
 

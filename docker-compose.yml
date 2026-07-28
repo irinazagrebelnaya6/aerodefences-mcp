@@ -64,6 +64,8 @@ services:
       ADD_EMBEDDINGS_URL: ${ADD_EMBEDDINGS_URL:-}
       ADD_EMBED_MODEL: ${ADD_EMBED_MODEL:-voyage-4-lite}
       ADD_EMBED_DIM: ${ADD_EMBED_DIM:-1024}
+      # Vector DB (для ADD_RAG_BACKEND=qdrant): у профілі voyage → http://qdrant:6333
+      ADD_QDRANT_URL: ${ADD_QDRANT_URL:-}
     ports:
       - "127.0.0.1:8000:8000"
       - "127.0.0.1:9100:9100"
@@ -134,5 +136,26 @@ services:
           cpus: "0.5"
           memory: 192M
 
+  # ── Qdrant: справжня vector-DB для RAG (ANN-пошук поза процесом mcp) ─────
+  # Альтернатива in-memory косинусу: вектори живуть у спеціалізованому сховищі.
+  # Профіль voyage; вмикається через ADD_RAG_BACKEND=qdrant + ADD_QDRANT_URL:
+  #   ADD_RAG_BACKEND=qdrant ADD_QDRANT_URL=http://qdrant:6333 \
+  #     ADD_EMBEDDINGS_URL=http://embeddings:8100 VOYAGE_API_KEY=... \
+  #     docker compose --profile voyage up --build
+  qdrant:
+    image: qdrant/qdrant:latest
+    profiles: ["voyage"]
+    ports:
+      - "127.0.0.1:6333:6333"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
 volumes:
   embeddings_cache:
+  qdrant_storage:

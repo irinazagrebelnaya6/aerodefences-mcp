@@ -28,7 +28,7 @@ dev = [
 [tool.setuptools]
 py-modules = [
     "server_aerodefences", "rag_index", "ad_embeddings", "ad_semcache",
-    "voyage_client",
+    "voyage_client", "ad_qdrant", "ad_summarize", "ad_gateway",
     "ad_config", "ad_metrics", "ad_db", "ad_security",
     "ad_repositories", "ad_resources", "ad_prompts",
     "ad_tools_read", "ad_tools_write", "ad_tools_rag",
