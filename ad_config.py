@@ -49,6 +49,8 @@ class Config:
     semcache: bool
     semcache_ttl: int
     semcache_threshold: float
+    summarize: bool
+    summarize_max_chars: int
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -84,6 +86,9 @@ class Config:
             semcache=os.getenv("ADD_SEMCACHE", "off").lower() in ("on", "1", "true"),
             semcache_ttl=int(os.getenv("ADD_SEMCACHE_TTL", "3600")),
             semcache_threshold=float(os.getenv("ADD_SEMCACHE_THRESHOLD", "0.93")),
+            # In-memory summarization: стискання top-k фрагментів перед LLM.
+            summarize=os.getenv("ADD_SUMMARIZE", "off").lower() in ("on", "1", "true"),
+            summarize_max_chars=int(os.getenv("ADD_SUMMARIZE_MAX_CHARS", "300")),
         )
 
 

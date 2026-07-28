@@ -153,6 +153,7 @@ rag_index.py             # RAG-retriever + фасад бекендів (TF-IDF/V
 ad_embeddings.py voyage_client.py  # семантичний бекенд + легкий клієнт Voyage AI
 ad_semcache.py           # Semantic Cache (Redis) для ask_catalog + інвалідація
 ad_qdrant.py             # vector-DB бекенд (Qdrant, ANN-пошук по REST)
+ad_summarize.py          # in-memory summarization (стискання фрагментів перед LLM)
 sidecar/                 # Sidecar-контейнер embeddings-proxy (свій Dockerfile)
 knowledge/*.md           # локальне джерело знань для RAG (політики, глосарій)
 client_aerodefences.py   # harness-клієнт (тест без LLM)

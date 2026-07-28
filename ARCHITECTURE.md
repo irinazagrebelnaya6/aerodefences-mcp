@@ -98,6 +98,7 @@
 | **`voyage_client.py`** | Легкий клієнт Voyage AI + утиліти кешу (httpx+stdlib, без fastmcp) | ← `ad_embeddings`, sidecar |
 | **`ad_semcache.py`** | Semantic Cache (Redis): пошук за сенсом запиту + інвалідація | ← `ask_catalog`, `run_write` |
 | **`ad_qdrant.py`** | Vector-DB бекенд: ANN-пошук у Qdrant по REST (без пакета qdrant-client) | ← `rag_index`, → Qdrant |
+| **`ad_summarize.py`** | In-memory summarization: екстрактивне стискання top-k фрагментів + LRU-кеш | ← `ask_catalog` |
 | **`sidecar/`** | Контейнер embeddings-proxy (свій Dockerfile): клієнт Voyage + кеш по HTTP | ← mcp (HTTP) |
 | **`client_aerodefences.py`** | Harness — сценарний тест-клієнт замість LLM; ганяє всі інструменти по черзі й друкує результат | піднімає сервер підпроцесом |
 | **`repl_aerodefences.py`** | Інтерактивний REPL — команди `call <tool> {json}` набираються вручну | піднімає сервер підпроцесом |
@@ -399,6 +400,16 @@ mcp **не тримає ключ Voyage** — ключ живе лише в side
 Отже, з чотирьох патернів лекції **побудовано три** — Sidecar, Semantic Cache і
 Event-Driven; Voyage виступає зовнішнім LLM-сервісом. API Gateway свідомо не
 впроваджений (одна модель-хост) — обґрунтування в `RAG_EMBEDDINGS_PLAN.md` §4.
+
+#### 7.2.2. In-memory summarization
+
+Опційний шар стискання контексту (`ad_summarize.py`, `ADD_SUMMARIZE=on`): після
+retrieval кожен top-k сніпет **екстрактивно** скорочується до найрелевантніших
+до запиту речень у межах `ADD_SUMMARIZE_MAX_CHARS`, щоб LLM-хост отримував менше
+токенів. Без виклику LLM (сервер лишається retriever'ом); результати кешуються
+в памʼяті процесу (LRU). Стискання застосовується **до** запису в semantic cache,
+тож кеш зберігає вже стиснену відповідь. Для нашого каталогу виграш малий — це
+задел під великий корпус/довгі документи.
 
 ### 7.3. Безпека (RBAC + guardrails)
 

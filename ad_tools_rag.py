@@ -11,6 +11,7 @@ from ad_config import mcp
 from ad_db import query
 from ad_security import _require_role
 from ad_semcache import get_semcache
+from ad_summarize import summarize_results
 
 
 @mcp.tool
@@ -65,6 +66,9 @@ async def ask_catalog(
 
     # промах (або кеш вимкнено): звичайний retrieval; переиспользуємо вектор
     results = await rag_index.INDEX.search(question, k=k, query_vec=query_vec)
+    # In-memory summarization: стискаємо фрагменти перед віддачею LLM (no-op,
+    # якщо ADD_SUMMARIZE вимкнено). Кешуємо вже стиснене.
+    results = summarize_results(question, results)
     if can_cache and query_vec is not None:
         try:
             await sc.put(question, query_vec, results)

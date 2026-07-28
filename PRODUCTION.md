@@ -88,6 +88,8 @@
 | `ADD_SEMCACHE` | Semantic cache для `ask_catalog` (`on`/`off`; потрібні Redis + voyage) | `off` |
 | `ADD_SEMCACHE_TTL` | TTL запису кешу (сек) | `3600` |
 | `ADD_SEMCACHE_THRESHOLD` | Поріг косинуса для влучання | `0.93` |
+| `ADD_SUMMARIZE` | In-memory стискання top-k фрагментів перед LLM (`on`/`off`) | `off` |
+| `ADD_SUMMARIZE_MAX_CHARS` | Бюджет символів на сніпет при стисканні | `300` |
 
 ---
 
