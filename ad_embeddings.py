@@ -110,7 +110,7 @@ class VoyageBackend:
             # sidecar сам кешує — просто просимо ембеддинги документів
             texts = [d.index_text() for d in docs]
             self._vecs = await self.client.embed(texts, input_type="document")
-            self.docs = docs
+            self.docs = list(docs)  # копія: upsert/remove не мутують вхід
             return
 
         # прямий режим: локальний дисковий кеш. Ключ включає модель і розмірність
@@ -132,7 +132,7 @@ class VoyageBackend:
             )
 
         self._vecs = [cache[k] for k in keys]
-        self.docs = docs
+        self.docs = list(docs)  # копія: upsert/remove не мутують вхідний корпус
 
     async def scores(
         self, question: str, query_vec: list[float] | None = None
@@ -149,6 +149,25 @@ class VoyageBackend:
         """Вектор запиту. Окремим методом — його ж використовує
         semantic cache (Фаза E), щоб не ембедити двічі."""
         return (await self.client.embed([question], input_type="query"))[0]
+
+    async def upsert(self, docs: list[_Doc]) -> None:
+        """Інкрементально: ембедимо документи цілком і замінюємо/додаємо
+        за doc_id (векторний простір той самий — той самий клієнт/модель)."""
+        vecs = await self.client.embed([d.index_text() for d in docs], "document")
+        for d, vec in zip(docs, vecs):
+            for i, ex in enumerate(self.docs):
+                if ex.doc_id == d.doc_id:
+                    self.docs[i], self._vecs[i] = d, vec
+                    break
+            else:
+                self.docs.append(d)
+                self._vecs.append(vec)
+
+    async def remove(self, doc_ids: list[str]) -> None:
+        drop = set(doc_ids)
+        pairs = [(d, v) for d, v in zip(self.docs, self._vecs) if d.doc_id not in drop]
+        self.docs = [d for d, _ in pairs]
+        self._vecs = [v for _, v in pairs]
 
     def extra_status(self) -> dict:
         via = "sidecar" if isinstance(self.client, SidecarClient) else "direct"

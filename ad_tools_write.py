@@ -19,15 +19,32 @@ from fastmcp.server.elicitation import (
     DeclinedElicitation,
 )
 
+import rag_index
 from ad_config import (
     ALLOWED_STATUSES,
     ALLOWED_UPDATE_FIELDS,
     SELECTION_KEY,
     SELECTION_TTL,
+    config,
     mcp,
 )
+from ad_db import query
 from ad_repositories import category_repo, faq_repo, product_repo
 from ad_security import _confirm, _require_role
+
+
+async def _reindex_product(slug: str, ctx: Context) -> None:
+    """Точковий reindex одного продукту після content-write (best-effort:
+    збій НЕ ламає запис — індекс лише злегка застаріє до наступного rebuild).
+    Викликається лише зі змін, що зачіпають текст RAG-документа."""
+    if not config.rag_autoreindex:
+        return
+    try:
+        res = await rag_index.INDEX.reindex_product(slug, query)
+        await ctx.info("rag reindex", extra=res)
+    except Exception as e:  # noqa: BLE001 — reindex best-effort
+        await ctx.info("rag reindex failed (index stale until rebuild)",
+                       extra={"slug": slug, "error": type(e).__name__})
 
 
 @mcp.tool
@@ -208,6 +225,7 @@ async def update_product_field(
     # field вже перевірено по білому списку — безпечно передати в репозиторій
     n = await product_repo.set_field(p["id"], field, value)
     await ctx.info("update_product_field done", extra={"slug": slug, "field": field, "affected": n})
+    await _reindex_product(slug, ctx)  # текст документа змінився → точковий reindex
     return f"OK: '{p['name']}'.{field} оновлено (рядків: {n})"
 
 
@@ -230,6 +248,7 @@ async def add_spec(
 
     n = await product_repo.add_spec(p["id"], spec_group, spec_name, spec_value)
     await ctx.info("add_spec done", extra={"slug": slug, "affected": n})
+    await _reindex_product(slug, ctx)  # spec входить у RAG-текст → точковий reindex
     return f"OK: до '{p['name']}' додано spec [{spec_group}] {spec_name} (рядків: {n})"
 
 
@@ -251,6 +270,7 @@ async def add_faq(
 
     n = await faq_repo.add(p["id"], question, answer)
     await ctx.info("add_faq done", extra={"slug": slug, "affected": n})
+    await _reindex_product(slug, ctx)  # FAQ входить у RAG-текст → точковий reindex
     return f"OK: до '{p['name']}' додано FAQ (рядків: {n})"
 
 

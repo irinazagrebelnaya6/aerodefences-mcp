@@ -110,18 +110,31 @@ async def collect_corpus(
     return docs
 
 
+async def collect_product(
+    query: Callable[..., Awaitable[list[dict]]], slug: str
+) -> _Doc | None:
+    """Побудувати документ ОДНОГО продукту (для інкрементального reindex).
+    None, якщо продукт зник із БД (тоді точку треба видалити з індексу)."""
+    docs = await _collect_db(query, slug=slug)
+    return docs[0] if docs else None
+
+
 async def _collect_db(
-    query: Callable[..., Awaitable[list[dict]]]
+    query: Callable[..., Awaitable[list[dict]]], slug: str | None = None
 ) -> list[_Doc]:
     """Один документ на продукт: назва + описи + специфікації + FAQ +
     категорія + вписані укр-синоніми (щоб англомовні описи знаходились за
-    українськими запитами)."""
+    українськими запитами). `slug` обмежує вибірку одним продуктом."""
     synonyms = _load_synonyms()
-    products = await query(
+    sql = (
         "SELECT p.id, p.slug, p.name, p.subtitle, p.short_description, "
         "p.long_description, p.key_advantage, "
         "c.slug AS cat_slug, c.name AS cat_name "
         "FROM products p LEFT JOIN categories c ON c.id = p.category_id"
+    )
+    products = (
+        await query(sql + " WHERE p.slug=%s", (slug,)) if slug
+        else await query(sql)
     )
     out: list[_Doc] = []
     for p in products:
@@ -212,6 +225,8 @@ class SearchBackend(Protocol):
     async def scores(
         self, question: str, query_vec: list[float] | None = None
     ) -> list[tuple[float, _Doc]]: ...
+    async def upsert(self, docs: list[_Doc]) -> None: ...
+    async def remove(self, doc_ids: list[str]) -> None: ...
     def extra_status(self) -> dict: ...
 
 
@@ -241,7 +256,7 @@ class TfidfBackend:
 
         # TF-IDF вектор кожного документа (нормований)
         self._vecs = [self._vectorize(toks) for toks in tokenized]
-        self.docs = docs
+        self.docs = list(docs)  # копія: upsert/remove не мутують вхідний корпус
 
     def _vectorize(self, toks: list[str]) -> dict[str, float]:
         if not toks:
@@ -270,6 +285,25 @@ class TfidfBackend:
             if score > 0:
                 scored.append((score, d))
         return scored
+
+    async def upsert(self, docs: list[_Doc]) -> None:
+        # IDF глобальний → лишається сталим; вектор нового доку рахуємо по
+        # поточному IDF (наближено, для великого потоку змін бажаний rebuild).
+        for d in docs:
+            vec = self._vectorize(_tokenize(d.index_text()))
+            for i, ex in enumerate(self.docs):
+                if ex.doc_id == d.doc_id:
+                    self.docs[i], self._vecs[i] = d, vec
+                    break
+            else:
+                self.docs.append(d)
+                self._vecs.append(vec)
+
+    async def remove(self, doc_ids: list[str]) -> None:
+        drop = set(doc_ids)
+        pairs = [(d, v) for d, v in zip(self.docs, self._vecs) if d.doc_id not in drop]
+        self.docs = [d for d, _ in pairs]
+        self._vecs = [v for _, v in pairs]
 
     def extra_status(self) -> dict:
         return {"vocabulary": len(self.idf)}
@@ -317,7 +351,7 @@ class RagIndex:
             await backend.build(docs)
 
         self.backend = backend
-        self.docs = docs
+        self.docs = list(docs)  # копія: інкрементальний reindex мутує локально
         self.sources = {
             "db": sum(1 for d in docs if d.source == "db"),
             "file": sum(1 for d in docs if d.source == "file"),
@@ -348,6 +382,48 @@ class RagIndex:
                 }
             )
         return results
+
+    # ---- інкрементальний reindex (одна точка-продукт) ----
+    async def reindex_product(
+        self, slug: str, query: Callable[..., Awaitable[list[dict]]]
+    ) -> dict:
+        """Точково оновити/видалити документ ОДНОГО продукту в активному бекенді
+        (замість повного rebuild). Перечитує весь продукт із БД, ембедить його
+        цілком і робить upsert; якщо продукт зник — remove. Викликається з
+        write-інструментів, що змінюють текст документа."""
+        if not self.ready:
+            # холодний індекс — лінива побудова згодом підхопить свіжі дані
+            return {"reindexed": False, "reason": "index cold"}
+        doc_id = f"db:product:{slug}"
+        doc = await collect_product(query, slug)
+        if doc is not None:
+            await self.backend.upsert([doc])
+            self._local_upsert(doc)
+            removed = False
+        else:
+            await self.backend.remove([doc_id])
+            self._local_remove(doc_id)
+            removed = True
+        return {"reindexed": True, "doc_id": doc_id, "removed": removed}
+
+    def _local_upsert(self, doc: _Doc) -> None:
+        for i, d in enumerate(self.docs):
+            if d.doc_id == doc.doc_id:
+                self.docs[i] = doc
+                break
+        else:
+            self.docs.append(doc)
+        self._recount()
+
+    def _local_remove(self, doc_id: str) -> None:
+        self.docs = [d for d in self.docs if d.doc_id != doc_id]
+        self._recount()
+
+    def _recount(self) -> None:
+        self.sources = {
+            "db": sum(1 for d in self.docs if d.source == "db"),
+            "file": sum(1 for d in self.docs if d.source == "file"),
+        }
 
     def status(self) -> dict:
         return {

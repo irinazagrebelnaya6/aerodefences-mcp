@@ -52,6 +52,7 @@ class Config:
     semcache_threshold: float
     summarize: bool
     summarize_max_chars: int
+    rag_autoreindex: bool
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -92,6 +93,9 @@ class Config:
             # In-memory summarization: стискання top-k фрагментів перед LLM.
             summarize=os.getenv("ADD_SUMMARIZE", "off").lower() in ("on", "1", "true"),
             summarize_max_chars=int(os.getenv("ADD_SUMMARIZE_MAX_CHARS", "300")),
+            # Інкрементальний reindex одного продукту після content-write.
+            rag_autoreindex=os.getenv("ADD_RAG_AUTOREINDEX", "on").lower()
+            in ("on", "1", "true"),
         )
 
 

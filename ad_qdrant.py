@@ -14,6 +14,8 @@ VoyageBackend (`make_embeddings_client`): прямий Voyage або sidecar.
 
 from __future__ import annotations
 
+import hashlib
+
 import httpx
 
 from ad_config import config, log
@@ -24,6 +26,13 @@ from voyage_client import EmbeddingsError
 COLLECTION = "aerodefences_rag"
 # Скільки кандидатів тягнемо з Qdrant; RagIndex.search вже ріже до потрібного k.
 SEARCH_LIMIT = 25
+
+
+def _pid(doc_id: str) -> int:
+    """Стабільний uint64-id точки з doc_id (slug). Дає адресний upsert/delete
+    однієї точки замість позиційного індексу (потрібно для інкрементального
+    reindex)."""
+    return int(hashlib.sha1(doc_id.encode("utf-8")).hexdigest()[:15], 16)
 
 
 class QdrantBackend:
@@ -51,24 +60,35 @@ class QdrantBackend:
                 json={"vectors": {"size": self.dim, "distance": "Cosine"}},
             )
             _raise(r)
-            points = [
-                {
-                    "id": i,
-                    "vector": vec,
-                    "payload": {
-                        "doc_id": d.doc_id, "source": d.source,
-                        "title": d.title, "text": d.text,
-                    },
-                }
-                for i, (d, vec) in enumerate(zip(docs, vectors))
-            ]
             r = await h.put(
                 f"{self._url}/collections/{COLLECTION}/points?wait=true",
-                json={"points": points},
+                json={"points": _points_payload(docs, vectors)},
             )
             _raise(r)
         self._points = len(docs)
         log.info("qdrant: upserted %d points into '%s'", self._points, COLLECTION)
+
+    async def upsert(self, docs: list[_Doc]) -> None:
+        """Інкрементально: (пере)ембедимо документи й пишемо точки за
+        стабільним id — старі точки тих самих продуктів замінюються."""
+        vectors = await self.client.embed([d.index_text() for d in docs], "document")
+        async with httpx.AsyncClient(timeout=30.0) as h:
+            r = await h.put(
+                f"{self._url}/collections/{COLLECTION}/points?wait=true",
+                json={"points": _points_payload(docs, vectors)},
+            )
+            _raise(r)
+        self._points += len(docs)  # приблизний лічильник (див. status)
+
+    async def remove(self, doc_ids: list[str]) -> None:
+        """Видалити точки за стабільними id (продукт зник із БД).
+        Кожна точка незалежна — видалення не зачіпає сусідні вектори."""
+        async with httpx.AsyncClient(timeout=15.0) as h:
+            r = await h.post(
+                f"{self._url}/collections/{COLLECTION}/points/delete?wait=true",
+                json={"points": [_pid(d) for d in doc_ids]},
+            )
+            _raise(r)
 
     async def scores(
         self, question: str, query_vec: list[float] | None = None
@@ -96,6 +116,22 @@ class QdrantBackend:
     def extra_status(self) -> dict:
         return {"vector_db": "qdrant", "collection": COLLECTION,
                 "points": self._points, "dim": self.dim}
+
+
+def _points_payload(docs: list[_Doc], vectors: list[list[float]]) -> list[dict]:
+    """Точки Qdrant зі СТАБІЛЬНИМ id (з doc_id) — це робить upsert/delete
+    адресними, а rebuild — ідемпотентним."""
+    return [
+        {
+            "id": _pid(d.doc_id),
+            "vector": vec,
+            "payload": {
+                "doc_id": d.doc_id, "source": d.source,
+                "title": d.title, "text": d.text,
+            },
+        }
+        for d, vec in zip(docs, vectors)
+    ]
 
 
 def _raise(resp: httpx.Response) -> None:

@@ -389,6 +389,18 @@ golden set `tests/golden_queries.json`).
 застаріла відповідь не переживе зміну каталогу. Це той самий барʼєр, що вже
 розсилав клієнтам `ResourceListChangedNotification`.
 
+**Точковий reindex (`ADD_RAG_AUTOREINDEX=on`, дефолт).** Write-інструменти, що
+змінюють ТЕКСТ документа (`update_product_field`, `add_spec`, `add_faq`), після
+коміту викликають `RagIndex.reindex_product(slug)`: продукт перечитується з БД
+цілком, ембедиться і **точково** пере-записується в активний бекенд — одна
+точка в Qdrant за стабільним id (або один вектор in-memory), без повного
+rebuild. Якщо продукт зник — точка видаляється (в Qdrant точки незалежні, тож
+видалення не зачіпає сусідів). Best-effort: збій reindex не ламає write (індекс
+злегка застаріє до наступного `rebuild_rag_index`). Зміни, що НЕ входять у текст
+документа (`update_price`/`update_stock`/`set_compliance`/статуси), reindex не
+тригерять — вектор не змінюється. Для TF-IDF інкремент наближений (глобальний
+IDF), для embeddings/Qdrant — точний.
+
 **Redis — окремий сервіс.** У docker-стеку Redis піднімається як окремий контейнер
 (профіль `voyage`, `redis:7-alpine`, `maxmemory` + LRU, без персистентності — кеш
 має TTL/інвалідацію, стан сесії ефемерний). Одне сховище обслуговує і semantic

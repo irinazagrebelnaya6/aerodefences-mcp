@@ -98,6 +98,31 @@ async def test_scores_parses_qdrant_hits(monkeypatch):
     assert scored[0][1].doc_id == "db:product:thermix"
 
 
+async def test_upsert_and_remove_by_stable_id(monkeypatch):
+    from ad_qdrant import _pid
+    rec = {}
+    monkeypatch.setattr(ad_qdrant.httpx, "AsyncClient",
+                        lambda *a, **k: FakeHttp(record=rec))
+    b = QdrantBackend(embed_client=FakeEmbedClient(), base_url="http://qdrant:6333")
+
+    await b.upsert([_doc("db:product:thermix", "ThermIX", "оптична камера")])
+    upsert = [j for u, j in rec["put"] if "points" in u][0]
+    # точка має СТАБІЛЬНИЙ id (з doc_id), не позиційний
+    assert upsert["points"][0]["id"] == _pid("db:product:thermix")
+
+    await b.remove(["db:product:thermix"])
+    delete = rec["post"][0][1]
+    assert delete["points"] == [_pid("db:product:thermix")]
+
+
+def test_pid_is_stable_and_uint():
+    from ad_qdrant import _pid
+    a = _pid("db:product:thermix")
+    assert a == _pid("db:product:thermix")     # детермінований
+    assert a != _pid("db:product:fieldsense")  # різні doc_id → різні id
+    assert isinstance(a, int) and a >= 0
+
+
 async def test_missing_url_raises(monkeypatch):
     from types import SimpleNamespace
     monkeypatch.setattr("ad_qdrant.config", SimpleNamespace(qdrant_url=None, embed_dim=4))
