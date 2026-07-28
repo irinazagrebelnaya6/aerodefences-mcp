@@ -93,7 +93,11 @@
 | **`ad_metrics.py`** | Лічильники (in-memory + Prometheus) | ← `_run_write`, `_require_role` |
 | **`ad_resources.py`** / **`ad_prompts.py`** | Ресурс `resource://schema` / prompt `compliance_report` | реєструються на `mcp` |
 | **`ad_tools_read.py`** / **`ad_tools_write.py`** / **`ad_tools_rag.py`** | READ+моніторинг / WRITE+«кошик» / RAG-інструменти | реєструються на `mcp` |
-| **`rag_index.py`** | RAG-retriever (TF-IDF над БД + `knowledge/`) | ← `ask_catalog` |
+| **`rag_index.py`** | RAG-retriever + фасад над бекендами (TF-IDF / Voyage) над БД + `knowledge/` | ← `ask_catalog` |
+| **`ad_embeddings.py`** | Семантичний бекенд: `VoyageBackend` + `SidecarClient` (прямий Voyage або sidecar по HTTP) | ← `rag_index` |
+| **`voyage_client.py`** | Легкий клієнт Voyage AI + утиліти кешу (httpx+stdlib, без fastmcp) | ← `ad_embeddings`, sidecar |
+| **`ad_semcache.py`** | Semantic Cache (Redis): пошук за сенсом запиту + інвалідація | ← `ask_catalog`, `run_write` |
+| **`sidecar/`** | Контейнер embeddings-proxy (свій Dockerfile): клієнт Voyage + кеш по HTTP | ← mcp (HTTP) |
 | **`client_aerodefences.py`** | Harness — сценарний тест-клієнт замість LLM; ганяє всі інструменти по черзі й друкує результат | піднімає сервер підпроцесом |
 | **`repl_aerodefences.py`** | Інтерактивний REPL — команди `call <tool> {json}` набираються вручну | піднімає сервер підпроцесом |
 | **`.env` / `.env.example`** | Параметри підключення до БД (`ADD_DB_*`) | читає `server_aerodefences.py` через `dotenv` |
@@ -121,6 +125,13 @@
   `compliance_report`.
 - **`ad_tools_read.py`** / **`ad_tools_write.py`** / **`ad_tools_rag.py`** —
   самі інструменти, згруповані за типом.
+- **`rag_index.py`** — збір корпусу (`collect_corpus`) + фасад `RagIndex` над
+  взаємозамінними бекендами пошуку (`TfidfBackend` / `VoyageBackend`).
+- **`ad_embeddings.py`** / **`voyage_client.py`** — семантичний бекенд і легкий
+  клієнт Voyage AI; вибір «прямий Voyage vs sidecar» за `ADD_EMBEDDINGS_URL`.
+- **`ad_semcache.py`** — Semantic Cache над Redis (patternи §6): пошук за
+  вектором запиту + Event-Driven інвалідація з `run_write`.
+- **`sidecar/`** — окремий контейнер embeddings-proxy (Sidecar-патерн).
 
 > `ALLOWED_STATUSES = ("draft","published","archived")` (в `ad_config.py`) —
 > єдине джерело істини для валідації статусів (`find_products`, `set_product_status`).
