@@ -30,7 +30,10 @@ from voyage_client import (
 
 # Реекспорт для сумісності з наявними тестами/імпортами.
 _dot = dot
-__all__ = ["VoyageBackend", "VoyageClient", "SidecarClient", "EmbeddingsError", "_dot"]
+__all__ = [
+    "VoyageBackend", "VoyageClient", "SidecarClient", "EmbeddingsError",
+    "make_embeddings_client", "_dot",
+]
 
 CACHE_FILE = pathlib.Path(__file__).parent / ".cache" / "rag_embeddings.json"
 
@@ -62,6 +65,23 @@ class SidecarClient:
         return resp.json()["vectors"]
 
 
+def make_embeddings_client() -> "VoyageClient | SidecarClient":
+    """Обрати клієнт embeddings за конфігом (спільно для voyage/qdrant бекендів):
+    sidecar (HTTP до окремого контейнера) або прямий Voyage. Без джерела —
+    EmbeddingsError (fail-safe, як із JWT)."""
+    if config.embeddings_url:
+        return SidecarClient(config.embeddings_url, config.embed_model, config.embed_dim)
+    if config.voyage_api_key:
+        return VoyageClient(
+            api_key=config.voyage_api_key,
+            model=config.embed_model,
+            dim=config.embed_dim,
+        )
+    raise EmbeddingsError(
+        "embeddings-джерело не задано: потрібен VOYAGE_API_KEY або ADD_EMBEDDINGS_URL"
+    )
+
+
 class VoyageBackend:
     """Семантичний бекенд RAG: embeddings (Voyage напряму або через sidecar)
     + косинус у памʼяті."""
@@ -69,28 +89,11 @@ class VoyageBackend:
     name = "voyage"
 
     def __init__(self, client: VoyageClient | SidecarClient | None = None) -> None:
-        # За замовчуванням кешуємо документи локально; у sidecar-режимі кеш
-        # тримає сам sidecar, тож локальний вимикаємо.
-        self._local_cache = True
-        if client is None:
-            if config.embeddings_url:
-                client = SidecarClient(
-                    config.embeddings_url, config.embed_model, config.embed_dim
-                )
-                self._local_cache = False  # кеш живе в sidecar-контейнері
-                log.info("embeddings via sidecar %s", config.embeddings_url)
-            elif config.voyage_api_key:
-                client = VoyageClient(
-                    api_key=config.voyage_api_key,
-                    model=config.embed_model,
-                    dim=config.embed_dim,
-                )
-            else:
-                # fail-safe, як із JWT: без джерела embeddings бекенд не створюється
-                raise EmbeddingsError(
-                    "ADD_RAG_BACKEND=voyage вимагає VOYAGE_API_KEY або ADD_EMBEDDINGS_URL"
-                )
-        self.client = client
+        self.client = client if client is not None else make_embeddings_client()
+        # У sidecar-режимі кеш тримає сам sidecar → локальний дисковий вимикаємо.
+        self._local_cache = not isinstance(self.client, SidecarClient)
+        if isinstance(self.client, SidecarClient):
+            log.info("embeddings via sidecar %s", config.embeddings_url)
         self.docs: list[_Doc] = []
         self._vecs: list[list[float]] = []
 

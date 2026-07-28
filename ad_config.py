@@ -43,6 +43,7 @@ class Config:
     rag_backend: str
     voyage_api_key: str | None
     embeddings_url: str | None
+    qdrant_url: str | None
     embed_model: str
     embed_dim: int
     semcache: bool
@@ -68,12 +69,15 @@ class Config:
             jwt_issuer=opt("ADD_JWT_ISSUER"),
             jwt_audience=opt("ADD_JWT_AUDIENCE"),
             # RAG: бекенд пошуку (див. RAG_EMBEDDINGS_PLAN.md).
-            # tfidf — офлайн-дефолт; voyage — embeddings через Voyage AI API.
+            # tfidf — офлайн-дефолт; voyage — embeddings у памʼяті;
+            # qdrant — embeddings + ANN-пошук у vector-DB (окремий контейнер).
             rag_backend=os.getenv("ADD_RAG_BACKEND", "tfidf"),
             voyage_api_key=opt("VOYAGE_API_KEY"),
             # Sidecar: якщо задано — embeddings беруться з окремого контейнера
             # по HTTP (замість прямого виклику Voyage). Див. sidecar/.
             embeddings_url=opt("ADD_EMBEDDINGS_URL"),
+            # Vector DB: URL Qdrant (для ADD_RAG_BACKEND=qdrant).
+            qdrant_url=opt("ADD_QDRANT_URL"),
             embed_model=os.getenv("ADD_EMBED_MODEL", "voyage-4-lite"),
             embed_dim=int(os.getenv("ADD_EMBED_DIM", "1024")),
             # Semantic cache (потрібні ADD_REDIS_URL + voyage-бекенд).

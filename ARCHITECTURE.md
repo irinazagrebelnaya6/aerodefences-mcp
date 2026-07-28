@@ -97,6 +97,7 @@
 | **`ad_embeddings.py`** | Семантичний бекенд: `VoyageBackend` + `SidecarClient` (прямий Voyage або sidecar по HTTP) | ← `rag_index` |
 | **`voyage_client.py`** | Легкий клієнт Voyage AI + утиліти кешу (httpx+stdlib, без fastmcp) | ← `ad_embeddings`, sidecar |
 | **`ad_semcache.py`** | Semantic Cache (Redis): пошук за сенсом запиту + інвалідація | ← `ask_catalog`, `run_write` |
+| **`ad_qdrant.py`** | Vector-DB бекенд: ANN-пошук у Qdrant по REST (без пакета qdrant-client) | ← `rag_index`, → Qdrant |
 | **`sidecar/`** | Контейнер embeddings-proxy (свій Dockerfile): клієнт Voyage + кеш по HTTP | ← mcp (HTTP) |
 | **`client_aerodefences.py`** | Harness — сценарний тест-клієнт замість LLM; ганяє всі інструменти по черзі й друкує результат | піднімає сервер підпроцесом |
 | **`repl_aerodefences.py`** | Інтерактивний REPL — команди `call <tool> {json}` набираються вручну | піднімає сервер підпроцесом |
@@ -276,6 +277,7 @@ flowchart TB
     db[("MySQL 8.4<br/>aerodefences")]
     files[/"knowledge/*.md<br/>політики, глосарій"/]
     redis[("Redis<br/>semantic cache + стан сесії")]
+    qdrant[("Qdrant<br/>vector DB · ANN (backend=qdrant)")]
 
     subgraph SIDE["Sidecar-контейнер · sidecar/embeddings_service.py"]
         emb["Embeddings proxy (HTTP)<br/>клієнт Voyage + дисковий кеш<br/>токенізація/кешування винесені з mcp"]
@@ -283,7 +285,7 @@ flowchart TB
     voyage["Voyage AI API<br/>embeddings (зовнішній LLM-сервіс)"]
 
     subgraph INFRA["Інфраструктура"]
-        docker["Docker + compose<br/>mcp + mysql; профіль voyage:<br/>+ embeddings(sidecar) + redis"]
+        docker["Docker + compose<br/>mcp + mysql; профіль voyage:<br/>+ embeddings(sidecar) + redis + qdrant"]
         ci["GitHub Actions CI<br/>ruff + pytest"]
     end
 
@@ -294,13 +296,14 @@ flowchart TB
     rt --> db
     wt --> db
 
-    %% RAG-конвеєр із двома взаємозамінними бекендами (ADD_RAG_BACKEND)
+    %% RAG-конвеєр із трьома взаємозамінними бекендами (ADD_RAG_BACKEND)
     rag -->|"1. перевір кеш"| semcache
     semcache -->|"вектори/відповіді"| redis
     rag ==>|"HTTP /embed (sidecar)"| emb
+    rag -->|"ANN-пошук (backend=qdrant)"| qdrant
     rag -. "fallback" .-> tfidf
     emb -->|"HTTPS"| voyage
-    rag -. "sidecar/API збій → " .-> tfidf
+    rag -. "sidecar/API/qdrant збій → " .-> tfidf
     rag --> db
     rag --> files
 
@@ -336,13 +339,14 @@ flowchart TB
 `source`, `score`, `snippet`. Генерацію робить LLM-хост **виключно** за цими
 фрагментами (grounding). Перебудова — `rebuild_rag_index`.
 
-**Два взаємозамінні бекенди пошуку** (`ADD_RAG_BACKEND`, див.
+**Три взаємозамінні бекенди пошуку** (`ADD_RAG_BACKEND`, див.
 `RAG_EMBEDDINGS_PLAN.md`):
 
 | Бекенд | Що це | Коли |
 |---|---|---|
 | `tfidf` (дефолт) | in-memory TF-IDF + косинус, чистий Python | офлайн, CI без секретів, база для порівняння |
-| `voyage` | семантичні embeddings через Voyage AI (`ad_embeddings.py`) | продакшн: крос-мовний пошук, морфологія |
+| `voyage` | семантичні embeddings через Voyage AI (`ad_embeddings.py`), косинус у памʼяті | крос-мовний пошук, морфологія; малий/середній корпус |
+| `qdrant` | embeddings + ANN-пошук у **vector-DB** Qdrant (`ad_qdrant.py`, окремий контейнер) | справжня vector-DB: великий корпус, retrieval винесено у спеціалізоване сховище |
 
 `RagIndex` — тонкий фасад над обраним бекендом; контракт `ask_catalog`
 незмінний. Якщо `voyage`-build падає (нема ключа / API недоступний) — індекс

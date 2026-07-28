@@ -79,7 +79,8 @@
 | `ADD_DB_SSL_CA` | Шлях до CA-сертифіката для TLS до БД | — |
 | `ADD_REDIS_URL` | Спільне сховище: стан сесій + semantic cache (фолбек — памʼять) | — |
 | `ADD_MAX_LIMIT` | Стеля на `limit` у read-інструментах | `200` |
-| `ADD_RAG_BACKEND` | Бекенд RAG-пошуку: `tfidf` \| `voyage` | `tfidf` |
+| `ADD_RAG_BACKEND` | Бекенд RAG-пошуку: `tfidf` \| `voyage` \| `qdrant` | `tfidf` |
+| `ADD_QDRANT_URL` | URL vector-DB Qdrant (для `qdrant`); у docker — `http://qdrant:6333` | — |
 | `VOYAGE_API_KEY` | Ключ Voyage AI (для прямого режиму; у sidecar-режимі — лише в контейнері embeddings) | — |
 | `ADD_EMBEDDINGS_URL` | URL sidecar-контейнера embeddings; порожньо → прямий виклик Voyage з mcp | — |
 | `ADD_EMBED_MODEL` | Модель embeddings | `voyage-4-lite` |

@@ -5,8 +5,9 @@ MCP-сервіс (FastMCP) над каталогом компонентів дл
 інструменти читання/зміни каталогу, RAG-пошук по даних і локальних політиках,
 контроль доступу (RBAC), підтвердження небезпечних дій та моніторинг.
 
-RAG-пошук має **два взаємозамінні бекенди** (`ADD_RAG_BACKEND`): TF-IDF
-(офлайн-дефолт) та семантичні **embeddings через Voyage AI**. Побудовано за
+RAG-пошук має **три взаємозамінні бекенди** (`ADD_RAG_BACKEND`): TF-IDF
+(офлайн-дефолт), семантичні **embeddings через Voyage AI**, та **vector-DB
+Qdrant** (ANN-пошук в окремому контейнері). Побудовано за
 мікросервісною архітектурою для LLM: **Sidecar** (окремий контейнер
 [`sidecar/`](sidecar/) з клієнтом Voyage + кешем, mcp ходить по HTTP),
 **Semantic Cache** (Redis) і **Event-Driven** інвалідація на write. Деталі —
@@ -151,6 +152,7 @@ ad_tools_read.py ad_tools_write.py ad_tools_rag.py      # інструменти
 rag_index.py             # RAG-retriever + фасад бекендів (TF-IDF/Voyage) над БД + knowledge/
 ad_embeddings.py voyage_client.py  # семантичний бекенд + легкий клієнт Voyage AI
 ad_semcache.py           # Semantic Cache (Redis) для ask_catalog + інвалідація
+ad_qdrant.py             # vector-DB бекенд (Qdrant, ANN-пошук по REST)
 sidecar/                 # Sidecar-контейнер embeddings-proxy (свій Dockerfile)
 knowledge/*.md           # локальне джерело знань для RAG (політики, глосарій)
 client_aerodefences.py   # harness-клієнт (тест без LLM)

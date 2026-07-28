@@ -276,11 +276,14 @@ class TfidfBackend:
 
 
 def _make_backend(name: str) -> SearchBackend:
-    """Фабрика бекендів. Імпорт voyage — лінивий, щоб офлайн-шлях
-    не тягнув httpx-клієнт і не вимагав ключа."""
+    """Фабрика бекендів. Імпорти ліниві, щоб офлайн-шлях (tfidf)
+    не тягнув httpx-клієнти й не вимагав ключів/сервісів."""
     if name == "voyage":
         from ad_embeddings import VoyageBackend
         return VoyageBackend()
+    if name == "qdrant":
+        from ad_qdrant import QdrantBackend
+        return QdrantBackend()
     return TfidfBackend()
 
 
