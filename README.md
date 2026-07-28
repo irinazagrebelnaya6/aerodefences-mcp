@@ -148,14 +148,17 @@ server_aerodefences.py   # точка входу-агрегатор (реєст�
 ad_config.py ad_db.py ad_security.py ad_metrics.py      # інфраструктура (config / БД / RBAC / метрики)
 ad_resources.py ad_prompts.py                           # ресурс schema / prompt compliance_report
 ad_tools_read.py ad_tools_write.py ad_tools_rag.py      # інструменти (read+моніторинг / write+кошик / RAG)
-rag_index.py             # RAG-retriever (TF-IDF/Voyage над БД + knowledge/)
-ad_embeddings.py         # Voyage AI embeddings-клієнт + семантичний бекенд
+rag_index.py             # RAG-retriever + фасад бекендів (TF-IDF/Voyage) над БД + knowledge/
+ad_embeddings.py voyage_client.py  # семантичний бекенд + легкий клієнт Voyage AI
+ad_semcache.py           # Semantic Cache (Redis) для ask_catalog + інвалідація
+sidecar/                 # Sidecar-контейнер embeddings-proxy (свій Dockerfile)
 knowledge/*.md           # локальне джерело знань для RAG (політики, глосарій)
 client_aerodefences.py   # harness-клієнт (тест без LLM)
 repl_aerodefences.py     # інтерактивний REPL
-tests/                   # pytest: read/RAG/RBAC/monitoring/round-trip
+tests/                   # pytest: read/RAG/embeddings/semcache/RBAC/monitoring/round-trip
 db/init.sql              # знеособлений seed БД (для compose + CI)
 Dockerfile, docker-compose.yml, .github/workflows/ci.yml
+RAG_EMBEDDINGS_PLAN.md   # план + мікросервісні патерни LLM (Sidecar/Cache/Event-Driven)
 PROMPT_BOOK.md, ARCHITECTURE.md, DEMO.md, architecture.drawio
 ```
 
