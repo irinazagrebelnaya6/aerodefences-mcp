@@ -52,7 +52,12 @@ async def ask_catalog(
     query_vec = None
     if can_cache:
         query_vec = await backend.embed_query(question)
-        cached = await sc.get(query_vec)
+        try:
+            cached = await sc.get(query_vec)
+        except Exception as e:  # noqa: BLE001 — кеш не критичний (fail-open)
+            await ctx.info("semcache get failed -> miss",
+                           extra={"error": type(e).__name__})
+            cached = None
         if cached is not None:
             await ctx.info("ask_catalog (semcache hit)",
                            extra={"question": question, "hits": len(cached)})
@@ -60,8 +65,11 @@ async def ask_catalog(
 
     # промах (або кеш вимкнено): звичайний retrieval; переиспользуємо вектор
     results = await rag_index.INDEX.search(question, k=k, query_vec=query_vec)
-    if can_cache:
-        await sc.put(question, query_vec, results)
+    if can_cache and query_vec is not None:
+        try:
+            await sc.put(question, query_vec, results)
+        except Exception as e:  # noqa: BLE001 — запис у кеш best-effort
+            await ctx.info("semcache put failed", extra={"error": type(e).__name__})
     await ctx.info("ask_catalog", extra={"question": question, "hits": len(results)})
     return _grounded(question, results, cached=False)
 
