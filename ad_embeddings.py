@@ -65,21 +65,29 @@ class SidecarClient:
         return resp.json()["vectors"]
 
 
-def make_embeddings_client() -> "VoyageClient | SidecarClient":
-    """Обрати клієнт embeddings за конфігом (спільно для voyage/qdrant бекендів):
-    sidecar (HTTP до окремого контейнера) або прямий Voyage. Без джерела —
-    EmbeddingsError (fail-safe, як із JWT)."""
+def _primary_provider() -> "tuple[str, VoyageClient | SidecarClient]":
+    """Основний embeddings-провайдер (sidecar або прямий Voyage), або
+    EmbeddingsError, якщо джерело не задано."""
     if config.embeddings_url:
-        return SidecarClient(config.embeddings_url, config.embed_model, config.embed_dim)
+        return ("sidecar", SidecarClient(
+            config.embeddings_url, config.embed_model, config.embed_dim))
     if config.voyage_api_key:
-        return VoyageClient(
-            api_key=config.voyage_api_key,
-            model=config.embed_model,
-            dim=config.embed_dim,
-        )
+        return ("voyage", VoyageClient(
+            api_key=config.voyage_api_key, model=config.embed_model, dim=config.embed_dim))
     raise EmbeddingsError(
         "embeddings-джерело не задано: потрібен VOYAGE_API_KEY або ADD_EMBEDDINGS_URL"
     )
+
+
+def make_embeddings_client():
+    """Клієнт embeddings за конфігом (спільно для voyage/qdrant бекендів).
+
+    `ADD_EMBED_GATEWAY=on` → API Gateway (маршрутизація до провайдерів із
+    фолбеком, `ad_gateway.py`); інакше — єдиний основний провайдер."""
+    if config.embed_gateway:
+        from ad_gateway import build_gateway
+        return build_gateway()
+    return _primary_provider()[1]
 
 
 class VoyageBackend:

@@ -97,7 +97,8 @@ async def test_missing_key_raises(monkeypatch):
     monkeypatch.setattr(
         "ad_embeddings.config",
         SimpleNamespace(
-            voyage_api_key=None, embeddings_url=None, embed_model="x", embed_dim=8
+            voyage_api_key=None, embeddings_url=None, embed_gateway=False,
+            embed_model="x", embed_dim=8,
         ),
     )
     with pytest.raises(EmbeddingsError):
@@ -165,7 +166,7 @@ async def test_backend_uses_sidecar_when_url_set(monkeypatch, tmp_path):
         "ad_embeddings.config",
         SimpleNamespace(
             voyage_api_key=None, embeddings_url="http://embeddings:8100",
-            embed_model="m", embed_dim=2,
+            embed_gateway=False, embed_model="m", embed_dim=2,
         ),
     )
     b = VoyageBackend()

@@ -44,6 +44,7 @@ class Config:
     voyage_api_key: str | None
     embeddings_url: str | None
     qdrant_url: str | None
+    embed_gateway: bool
     embed_model: str
     embed_dim: int
     semcache: bool
@@ -80,6 +81,8 @@ class Config:
             embeddings_url=opt("ADD_EMBEDDINGS_URL"),
             # Vector DB: URL Qdrant (для ADD_RAG_BACKEND=qdrant).
             qdrant_url=opt("ADD_QDRANT_URL"),
+            # API Gateway для embeddings: маршрутизація Voyage → local з фолбеком.
+            embed_gateway=os.getenv("ADD_EMBED_GATEWAY", "off").lower() in ("on", "1", "true"),
             embed_model=os.getenv("ADD_EMBED_MODEL", "voyage-4-lite"),
             embed_dim=int(os.getenv("ADD_EMBED_DIM", "1024")),
             # Semantic cache (потрібні ADD_REDIS_URL + voyage-бекенд).

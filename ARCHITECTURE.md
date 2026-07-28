@@ -99,6 +99,7 @@
 | **`ad_semcache.py`** | Semantic Cache (Redis): пошук за сенсом запиту + інвалідація | ← `ask_catalog`, `run_write` |
 | **`ad_qdrant.py`** | Vector-DB бекенд: ANN-пошук у Qdrant по REST (без пакета qdrant-client) | ← `rag_index`, → Qdrant |
 | **`ad_summarize.py`** | In-memory summarization: екстрактивне стискання top-k фрагментів + LRU-кеш | ← `ask_catalog` |
+| **`ad_gateway.py`** | API Gateway для embeddings: маршрутизація до провайдерів (Voyage/local) з фолбеком | ← `make_embeddings_client` |
 | **`sidecar/`** | Контейнер embeddings-proxy (свій Dockerfile): клієнт Voyage + кеш по HTTP | ← mcp (HTTP) |
 | **`client_aerodefences.py`** | Harness — сценарний тест-клієнт замість LLM; ганяє всі інструменти по черзі й друкує результат | піднімає сервер підпроцесом |
 | **`repl_aerodefences.py`** | Інтерактивний REPL — команди `call <tool> {json}` набираються вручну | піднімає сервер підпроцесом |
@@ -397,9 +398,19 @@ cache (`semcache:*`), і стан сесій (`sel:*`). Без `ADD_REDIS_URL` �
 sidecar піднімається профілем `voyage` (`docker compose --profile voyage up`), а
 mcp **не тримає ключ Voyage** — ключ живе лише в sidecar-контейнері.
 
-Отже, з чотирьох патернів лекції **побудовано три** — Sidecar, Semantic Cache і
-Event-Driven; Voyage виступає зовнішнім LLM-сервісом. API Gateway свідомо не
-впроваджений (одна модель-хост) — обґрунтування в `RAG_EMBEDDINGS_PLAN.md` §4.
+**API Gateway (`ad_gateway.py`, `ADD_EMBED_GATEWAY=on`).** Патерн застосовано до
+embeddings-підсистеми: єдиний вхід `.embed()` маршрутизує до провайдерів із
+фолбеком — основний Voyage (прямий/sidecar) + резервний `LocalEmbedProvider`
+(офлайн детермінований, без ключа). Це аналог gateway, що обирає між моделями
+(GPT/Claude/Llama), лише для embeddings. Gateway **фіксується** на провайдері,
+який обслужив build корпусу, і використовує лише його для запитів (щоб вектори
+були в одному просторі). Новий провайдер (OpenAI, локальна модель) додається
+реєстрацією у `build_gateway`.
+
+Отже, всі **чотири патерни лекції мають робочу реалізацію** — API Gateway,
+Sidecar, Semantic Cache, Event-Driven (деталі й межі — `RAG_EMBEDDINGS_PLAN.md` §4).
+Повний контур LLM-мікросервісів доповнюють vector-DB (Qdrant) та in-memory
+summarization.
 
 #### 7.2.2. In-memory summarization
 

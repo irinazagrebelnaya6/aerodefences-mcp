@@ -90,6 +90,7 @@
 | `ADD_SEMCACHE_THRESHOLD` | Поріг косинуса для влучання | `0.93` |
 | `ADD_SUMMARIZE` | In-memory стискання top-k фрагментів перед LLM (`on`/`off`) | `off` |
 | `ADD_SUMMARIZE_MAX_CHARS` | Бюджет символів на сніпет при стисканні | `300` |
+| `ADD_EMBED_GATEWAY` | API Gateway для embeddings: маршрутизація Voyage→local з фолбеком (`on`/`off`) | `off` |
 
 ---
 

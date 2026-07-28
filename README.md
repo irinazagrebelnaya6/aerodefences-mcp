@@ -56,7 +56,7 @@ READ/WRITE-інструментів, RAG-retriever'а (TF-IDF / Voyage embedding
 |---|---|
 | Логіка LLM + prompting | `PROMPT_BOOK.md`: системний промпт, стратегії маршрутизації, few-shot |
 | Інтеграція з зовнішніми даними | MySQL + **RAG** (`ask_catalog`) над БД і локальними файлами; embeddings через Voyage AI |
-| Мікросервісна архітектура LLM | **Sidecar** (контейнер `embeddings/` — Voyage-клієнт + кеш), **Semantic Cache** (Redis), **Event-Driven** інвалідація — `RAG_EMBEDDINGS_PLAN.md` §4 |
+| Мікросервісна архітектура LLM | Усі 4 патерни: **API Gateway** (embeddings-провайдери), **Sidecar** (контейнер `embeddings/`), **Semantic Cache** (Redis), **Event-Driven** інвалідація; + vector-DB (Qdrant) та in-memory summarization — `RAG_EMBEDDINGS_PLAN.md` §4 |
 | Context / Memory / Routing | `ctx` (логи/elicit/progress), стан сесії (selection-cart), маршрутизація за описами |
 | Підключення джерел | БД MySQL · локальні файли `knowledge/*.md` · клієнтські `meta` |
 | Бізнес-сценарій | Q&A + керування каталогом БПЛА |
@@ -154,6 +154,7 @@ ad_embeddings.py voyage_client.py  # семантичний бекенд + ле�
 ad_semcache.py           # Semantic Cache (Redis) для ask_catalog + інвалідація
 ad_qdrant.py             # vector-DB бекенд (Qdrant, ANN-пошук по REST)
 ad_summarize.py          # in-memory summarization (стискання фрагментів перед LLM)
+ad_gateway.py            # API Gateway для embeddings (маршрутизація Voyage/local + фолбек)
 sidecar/                 # Sidecar-контейнер embeddings-proxy (свій Dockerfile)
 knowledge/*.md           # локальне джерело знань для RAG (політики, глосарій)
 client_aerodefences.py   # harness-клієнт (тест без LLM)
